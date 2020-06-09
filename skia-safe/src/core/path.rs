@@ -181,6 +181,8 @@ impl<'a> Iterator for RawIter<'a> {
 }
 
 pub type Path = Handle<SkPath>;
+unsafe impl Sync for Path {}
+unsafe impl Send for Path {}
 
 impl NativeDrop for SkPath {
     fn drop(&mut self) {
