@@ -67,6 +67,11 @@ impl RCHandle<SkData> {
         Data::from_ptr(unsafe { sb::C_SkData_MakeWithCopy(data.as_ptr() as _, data.len()) })
             .unwrap()
     }
+    
+    pub fn new_bytes(data: &[u8]) -> Self {
+          Data::from_ptr(unsafe { sb::C_SkData_MakeWithoutCopy(data.as_ptr() as _, data.len()) })
+            .unwrap()
+    }
 
     /// Constructs Data from a given byte slice without copying it.
     ///
