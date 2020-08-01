@@ -195,6 +195,31 @@ impl RCHandle<SkImage> {
         })
     }
 
+    #[cfg(feature = "gpu")]
+    pub fn from_texture_with_release_proc(
+        context: &mut gpu::Context,
+        backend_texture: &gpu::BackendTexture,
+        origin: gpu::SurfaceOrigin,
+        color_type: ColorType,
+        alpha_type: AlphaType,
+        color_space: impl Into<Option<ColorSpace>>,
+        release_proc: Option<unsafe extern "C" fn(*mut ::core::ffi::c_void)>,
+        release_context: *mut ::core::ffi::c_void,
+    ) -> Option<Image> {
+        Image::from_ptr(unsafe {
+            sb::C_SkImage_MakeFromTexture(
+                context.native_mut(),
+                backend_texture.native(),
+                origin,
+                color_type.into_native(),
+                alpha_type,
+                color_space.into().into_ptr_or_null(),
+                release_proc,
+                release_context
+            )
+        })
+    }
+
     // TODO: MakeFromCompressedTexture
 
     #[deprecated(since = "0.27.0", note = "renamed, use new_cross_context_from_pixmap")]
