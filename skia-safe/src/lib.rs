@@ -7,7 +7,7 @@ pub mod gpu;
 mod interop;
 mod modules;
 mod pathops;
-mod prelude;
+pub mod prelude;
 pub mod wrapper;
 // The module private may contain types that leak.
 pub mod private;
