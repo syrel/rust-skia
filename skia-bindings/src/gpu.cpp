@@ -6,6 +6,7 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkSurfaceCharacterization.h"
 #include "include/core/SkImageGenerator.h"
+#include "include/core/SkImage.h"
 
 //
 // core/SkSurface.h
@@ -333,6 +334,18 @@ extern "C" SkImage* C_SkImage_MakeFromTexture(
         SkAlphaType alphaType,
         SkColorSpace* colorSpace) {
     return SkImage::MakeFromTexture(context, *backendTexture, origin, colorType, alphaType, sp(colorSpace)).release();
+}
+
+extern "C" SkImage* C_SkImage_MakeFromTextureWithReleaseProc(
+        GrContext* context,
+        const GrBackendTexture* backendTexture,
+        GrSurfaceOrigin origin,
+        SkColorType colorType,
+        SkAlphaType alphaType,
+        SkColorSpace* colorSpace,
+        SkImage::TextureReleaseProc releaseProc,
+        SkImage::ReleaseContext releaseContext) {
+    return SkImage::MakeFromTexture(context, *backendTexture, origin, colorType, alphaType, sp(colorSpace), releaseProc, releaseContext).release();
 }
 
 extern "C" SkImage* C_SkImage_MakeCrossContextFromPixmap(

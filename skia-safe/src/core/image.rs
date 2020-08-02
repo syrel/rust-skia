@@ -209,7 +209,7 @@ impl RCHandle<SkImage> {
         release_context: *mut ::core::ffi::c_void,
     ) -> Option<Image> {
         Image::from_ptr(unsafe {
-            sb::C_SkImage_MakeFromTexture(
+            sb::C_SkImage_MakeFromTextureWithReleaseProc(
                 context.native_mut(),
                 backend_texture.native(),
                 origin,
