@@ -1,7 +1,13 @@
 use crate::prelude::*;
-use crate::{Color, Data, Point, Rect};
+use crate::{Color, Point, Rect};
 use skia_bindings as sb;
-use skia_bindings::{SkColor, SkPoint, SkVertices, SkVertices_Attribute, SkVertices_Builder};
+use skia_bindings::{
+    SkColor, SkPoint, SkVertices, SkVertices_Attribute, SkVertices_Attribute_Type,
+    SkVertices_Builder,
+};
+use std::ffi::CStr;
+use std::marker::PhantomData;
+use std::os::raw::c_char;
 use std::{ptr, slice};
 
 #[deprecated(since = "0.29.0", note = "removed without replacement")]
@@ -33,27 +39,76 @@ pub enum AttributeType {
     Byte4UNorm = sb::SkVertices_Attribute_Type::Byte4_unorm as _,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct Attribute {
-    pub tp: AttributeType,
+impl NativeTransmutable<SkVertices_Attribute_Type> for AttributeType {}
+#[test]
+fn test_attribute_type_layout() {
+    AttributeType::test_layout()
 }
 
-impl NativeTransmutable<SkVertices_Attribute> for Attribute {}
+pub use skia_bindings::SkVertices_Attribute_Usage as AttributeUsage;
+#[test]
+fn test_attribute_usage_naming() {
+    let _ = AttributeUsage::Vector;
+}
 
+#[repr(C)]
+#[derive(Copy, Clone, Eq, Debug)]
+pub struct Attribute<'a> {
+    pub ty: AttributeType,
+    pub usage: AttributeUsage,
+    pub marker_id: u32,
+    marker_name: *const c_char,
+    pd: PhantomData<&'a CStr>,
+}
+
+impl NativeTransmutable<SkVertices_Attribute> for Attribute<'_> {}
 #[test]
 fn test_attribute_layout() {
     Attribute::test_layout()
 }
 
-impl Default for Attribute {
+impl PartialEq for Attribute<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.usage == other.usage && self.marker_id == other.marker_id
+    }
+}
+
+impl Default for Attribute<'_> {
     fn default() -> Self {
         Attribute::new(AttributeType::Float)
     }
 }
 
-impl Attribute {
-    pub fn new(tp: AttributeType) -> Self {
-        Self { tp }
+impl Attribute<'_> {
+    pub fn new(ty: AttributeType) -> Self {
+        Self::new_with_usage_and_marker(ty, None, None)
+    }
+
+    pub fn new_with_usage_and_marker<'a>(
+        ty: AttributeType,
+        usage: impl Into<Option<AttributeUsage>>,
+        marker_name: impl Into<Option<&'a CStr>>,
+    ) -> Attribute<'a> {
+        let marker_name = marker_name
+            .into()
+            .map(|m| m.as_ptr())
+            .unwrap_or(ptr::null());
+
+        Attribute::from_native(unsafe {
+            SkVertices_Attribute::new(
+                ty.into_native(),
+                usage.into().unwrap_or(AttributeUsage::Raw),
+                marker_name,
+            )
+        })
+    }
+
+    pub fn marker_name(&self) -> Option<&CStr> {
+        if !self.marker_name.is_null() {
+            unsafe { CStr::from_ptr(self.marker_name) }.into()
+        } else {
+            None
+        }
     }
 
     pub fn channel_count(self) -> usize {
@@ -63,9 +118,15 @@ impl Attribute {
     pub fn bytes_per_vertex(self) -> usize {
         unsafe { self.native().bytesPerVertex() }
     }
+
+    pub fn is_valid(self) -> bool {
+        unsafe { self.native().isValid() }
+    }
 }
 
 pub type Vertices = RCHandle<SkVertices>;
+unsafe impl Send for Vertices {}
+unsafe impl Sync for Vertices {}
 
 impl NativeRefCounted for SkVertices {
     fn _ref(&self) {
@@ -213,12 +274,14 @@ impl RCHandle<SkVertices> {
         unsafe { self.native().approximateSize() }
     }
 
-    pub fn decode(buffer: &[u8]) -> Option<Vertices> {
-        Vertices::from_ptr(unsafe { sb::C_SkVertices_Decode(buffer.as_ptr() as _, buffer.len()) })
+    #[deprecated(since = "0.31.0", note = "removed without replacement")]
+    pub fn decode(_buffer: &[u8]) -> ! {
+        panic!("removed without replacement");
     }
 
-    pub fn encode(&self) -> Data {
-        Data::from_ptr(unsafe { sb::C_SkVertices_encode(self.native()) }).unwrap()
+    #[deprecated(since = "0.31.0", note = "removed without replacement")]
+    pub fn encode(&self) -> ! {
+        panic!("removed without replacement");
     }
 }
 
@@ -230,6 +293,8 @@ bitflags! {
 }
 
 pub type Builder = Handle<SkVertices_Builder>;
+unsafe impl Send for Builder {}
+unsafe impl Sync for Builder {}
 
 impl NativeDrop for SkVertices_Builder {
     fn drop(&mut self) {

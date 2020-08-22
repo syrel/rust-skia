@@ -53,6 +53,7 @@ pub mod document;
 pub use document::Document;
 
 pub mod draw_looper;
+#[allow(deprecated)]
 pub use draw_looper::DrawLooper;
 
 pub mod drawable;
@@ -120,6 +121,7 @@ pub mod matrix;
 pub use matrix::Matrix;
 
 pub mod matrix44;
+#[allow(deprecated)]
 pub use matrix44::{Matrix44, Vector4};
 
 mod milestone;
@@ -134,6 +136,9 @@ pub use paint::Style as PaintStyle;
 
 pub mod path;
 pub use path::Path;
+
+mod path_builder;
+pub use path_builder::PathBuilder;
 
 pub mod path_effect;
 pub use path_effect::PathEffect;

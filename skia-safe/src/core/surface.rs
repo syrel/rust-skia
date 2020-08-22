@@ -21,6 +21,12 @@ fn test_surface_backend_handle_access_naming() {
     let _ = BackendHandleAccess::FlushWrite;
 }
 
+pub use skia_bindings::SkSurface_BackendSurfaceAccess as BackendSurfaceAccess;
+#[test]
+fn test_surface_backend_surface_access_naming() {
+    let _ = BackendSurfaceAccess::Present;
+}
+
 pub type Surface = RCHandle<SkSurface>;
 
 impl NativeRefCountedBase for SkSurface {
@@ -121,26 +127,17 @@ impl RCHandle<SkSurface> {
         })
     }
 
+    #[deprecated(since = "0.33.0", note = "removed without replacement")]
     pub fn from_backend_texture_as_render_target(
-        context: &mut gpu::Context,
-        backend_texture: &gpu::BackendTexture,
-        origin: gpu::SurfaceOrigin,
-        sample_count: impl Into<Option<usize>>,
-        color_type: crate::ColorType,
-        color_space: impl Into<Option<crate::ColorSpace>>,
-        surface_props: Option<&SurfaceProps>,
-    ) -> Option<Self> {
-        Self::from_ptr(unsafe {
-            sb::C_SkSurface_MakeFromBackendTextureAsRenderTarget(
-                context.native_mut(),
-                backend_texture.native(),
-                origin,
-                sample_count.into().unwrap_or(0).try_into().unwrap(),
-                color_type.into_native(),
-                color_space.into().into_ptr_or_null(),
-                surface_props.native_ptr_or_null(),
-            )
-        })
+        _context: &mut gpu::Context,
+        _backend_texture: &gpu::BackendTexture,
+        _origin: gpu::SurfaceOrigin,
+        _sample_count: impl Into<Option<usize>>,
+        _color_type: crate::ColorType,
+        _color_space: impl Into<Option<crate::ColorSpace>>,
+        _surface_props: Option<&SurfaceProps>,
+    ) -> ! {
+        panic!("removed without replacement")
     }
 
     #[cfg(feature = "metal")]
@@ -281,6 +278,10 @@ impl RCHandle<SkSurface> {
 
 #[cfg(feature = "gpu")]
 impl RCHandle<SkSurface> {
+    pub fn context(&mut self) -> Option<gpu::Context> {
+        gpu::Context::from_unshared_ptr(unsafe { self.native_mut().getContext() })
+    }
+
     pub fn get_backend_texture(
         &mut self,
         handle_access: BackendHandleAccess,
@@ -457,14 +458,28 @@ impl RCHandle<SkSurface> {
         SurfaceProps::from_native_ref(unsafe { &*sb::C_SkSurface_props(self.native()) })
     }
 
-    pub fn flush(&mut self) {
+    pub fn flush_and_submit(&mut self) {
         unsafe {
-            self.native_mut().flush();
+            self.native_mut().flushAndSubmit();
         }
     }
 
-    // TODO: flush(access, FlushInfo)
-    // TODO: flush(access, FlshFlags, semaphores)
+    #[deprecated(since = "0.30.0", note = "Use flush_and_submit()")]
+    // when removed, replace it with flush_with_access() and deprecate it.
+    pub fn flush(&mut self) {
+        self.flush_and_submit()
+    }
+
+    #[cfg(feature = "gpu")]
+    pub fn flush_with_access_info(
+        &mut self,
+        access: BackendSurfaceAccess,
+        info: &gpu::FlushInfo,
+    ) -> gpu::SemaphoresSubmitted {
+        unsafe { self.native_mut().flush(access, info.native()) }
+    }
+
+    // TODO: flush(FlushInfo, GrBackendSurfaceMutableState)
     // TODO: wait()
 
     pub fn characterize(&self) -> Option<SurfaceCharacterization> {

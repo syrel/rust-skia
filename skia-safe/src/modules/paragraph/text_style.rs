@@ -29,14 +29,18 @@ impl TextDecoration {
 }
 
 pub use sb::skia_textlayout_TextDecorationStyle as TextDecorationStyle;
-
 #[test]
-fn text_decoration_style_member_naming() {
+fn text_decoration_style_naming() {
     let _ = TextDecorationStyle::Solid;
 }
 
-pub use sb::skia_textlayout_StyleType as StyleType;
+pub use sb::skia_textlayout_TextDecorationMode as TextDecorationMode;
+#[test]
+fn text_decoration_mode_naming() {
+    let _ = TextDecorationMode::Gaps;
+}
 
+pub use sb::skia_textlayout_StyleType as StyleType;
 #[test]
 fn style_type_member_naming() {
     let _ = StyleType::Foreground;
@@ -46,6 +50,7 @@ fn style_type_member_naming() {
 #[derive(Copy, Clone, PartialEq, Default, Debug)]
 pub struct Decoration {
     pub ty: TextDecoration,
+    pub mode: TextDecorationMode,
     pub color: Color,
     pub style: TextDecorationStyle,
     pub thickness_multiplier: scalar,
@@ -67,6 +72,8 @@ fn placeholder_alignment_member_naming() {
 }
 
 pub type FontFeature = Handle<sb::skia_textlayout_FontFeature>;
+unsafe impl Send for FontFeature {}
+unsafe impl Sync for FontFeature {}
 
 impl NativeDrop for sb::skia_textlayout_FontFeature {
     fn drop(&mut self) {
@@ -148,6 +155,8 @@ impl PlaceholderStyle {
 }
 
 pub type TextStyle = Handle<sb::skia_textlayout_TextStyle>;
+unsafe impl Send for TextStyle {}
+unsafe impl Sync for TextStyle {}
 
 impl NativeDrop for sb::skia_textlayout_TextStyle {
     fn drop(&mut self) {
@@ -461,6 +470,8 @@ fn placeholder_layout() {
 
 impl Default for Placeholder {
     fn default() -> Self {
+        #[allow(clippy::unknown_clippy_lints)]
+        #[allow(clippy::reversed_empty_ranges)] // 1.45 lint
         Self {
             range: EMPTY_RANGE,
             style: Default::default(),

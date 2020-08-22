@@ -4,6 +4,8 @@ use skia_bindings as sb;
 use skia_bindings::{SkContourMeasure, SkContourMeasureIter, SkRefCntBase};
 
 pub type ContourMeasure = RCHandle<SkContourMeasure>;
+unsafe impl Send for ContourMeasure {}
+unsafe impl Sync for ContourMeasure {}
 
 impl NativeRefCountedBase for SkContourMeasure {
     type Base = SkRefCntBase;
@@ -48,7 +50,10 @@ impl RCHandle<SkContourMeasure> {
             self.native().getMatrix(
                 distance,
                 m.native_mut(),
-                // note: depending on the OS, different representation types are generated for MatrixFlags
+                // note: depending on the OS, different representation types are generated for MatrixFlags,
+                // so the try_into() is required, even though clippy complains about it.
+                #[allow(clippy::unknown_clippy_lints)]
+                #[allow(clippy::useless_conversion)] // 1.45 lint
                 flags.into().unwrap_or_default().bits().try_into().unwrap(),
             )
         }
@@ -75,6 +80,8 @@ impl RCHandle<SkContourMeasure> {
 }
 
 pub type ContourMeasureIter = Handle<SkContourMeasureIter>;
+unsafe impl Send for ContourMeasureIter {}
+unsafe impl Sync for ContourMeasureIter {}
 
 impl NativeDrop for SkContourMeasureIter {
     fn drop(&mut self) {

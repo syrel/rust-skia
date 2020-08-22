@@ -5,9 +5,12 @@ use skia_bindings as sb;
 use skia_bindings::{
     SkRefCntBase, SkRuntimeEffect, SkRuntimeEffect_Variable, SkRuntimeEffect_Varying,
 };
+use std::ffi::CStr;
 use std::slice;
 
 pub type Variable = Handle<SkRuntimeEffect_Variable>;
+unsafe impl Send for Variable {}
+unsafe impl Sync for Variable {}
 
 impl NativeDrop for SkRuntimeEffect_Variable {
     fn drop(&mut self) {
@@ -38,6 +41,10 @@ impl Handle<SkRuntimeEffect_Variable> {
 
     pub fn flags(&self) -> variable::Flags {
         variable::Flags::from_bits(self.native().fFlags).unwrap()
+    }
+
+    pub fn marker(&self) -> u32 {
+        self.native().fMarker
     }
 
     #[cfg(feature = "gpu")]
@@ -72,11 +79,16 @@ pub mod variable {
     bitflags! {
         pub struct Flags : u32 {
             const ARRAY = sb::SkRuntimeEffect_Variable_Flags_kArray_Flag as _;
+            const MARKER = sb::SkRuntimeEffect_Variable_Flags_kMarker_Flag as _;
+            const MARKER_NORMALS = sb::SkRuntimeEffect_Variable_Flags_kMarkerNormals_Flag as _;
+            const SRGB_UNPREMUL = sb::SkRuntimeEffect_Variable_Flags_kSRGBUnpremul_Flag as _;
         }
     }
 }
 
 pub type Varying = Handle<SkRuntimeEffect_Varying>;
+unsafe impl Send for Varying {}
+unsafe impl Sync for Varying {}
 
 impl NativeDrop for SkRuntimeEffect_Varying {
     fn drop(&mut self) {
@@ -115,7 +127,7 @@ pub fn new(sksl: impl AsRef<str>) -> Result<RuntimeEffect, String> {
 impl RCHandle<SkRuntimeEffect> {
     pub fn make_shader<'a>(
         &mut self,
-        inputs: Data,
+        inputs: impl Into<Data>,
         children: impl IntoIterator<Item = Shader>,
         local_matrix: impl Into<Option<&'a Matrix>>,
         is_opaque: bool,
@@ -127,7 +139,7 @@ impl RCHandle<SkRuntimeEffect> {
         Shader::from_ptr(unsafe {
             sb::C_SkRuntimeEffect_makeShader(
                 self.native_mut(),
-                inputs.into_ptr(),
+                inputs.into().into_ptr(),
                 children.as_mut_ptr(),
                 children.len(),
                 local_matrix.into().native_ptr_or_null(),
@@ -136,9 +148,18 @@ impl RCHandle<SkRuntimeEffect> {
         })
     }
 
-    pub fn make_color_filter(&mut self, inputs: Data) -> Option<ColorFilter> {
+    #[deprecated(since = "0.33.0", note = "removed without replacement")]
+    pub fn make_color_filter_with_children(
+        &mut self,
+        _inputs: impl Into<Data>,
+        _children: impl IntoIterator<Item = ColorFilter>,
+    ) -> ! {
+        panic!("removed without replacement")
+    }
+
+    pub fn make_color_filter(&mut self, inputs: impl Into<Data>) -> Option<ColorFilter> {
         ColorFilter::from_ptr(unsafe {
-            sb::C_SkRuntimeEffect_makeColorFilter(self.native_mut(), inputs.into_ptr())
+            sb::C_SkRuntimeEffect_makeColorFilter(self.native_mut(), inputs.into().into_ptr())
         })
     }
 
@@ -159,8 +180,9 @@ impl RCHandle<SkRuntimeEffect> {
         unsafe { self.native().inputSize() }
     }
 
-    pub fn uniform_size(&self) -> usize {
-        unsafe { sb::C_SkRuntimeEffect_uniformSize(self.native()) }
+    #[deprecated(since = "0.30.0", note = "removed without replacement")]
+    pub fn uniform_size(&self) -> ! {
+        panic!("removed without replacement")
     }
 
     pub fn inputs(&self) -> &[Variable] {
@@ -188,6 +210,20 @@ impl RCHandle<SkRuntimeEffect> {
         }
     }
 
-    // TODO: wrap toPipelineStage()
-    // TODO: wrap toByteCode()
+    pub fn find_input(&self, name: impl AsRef<CStr>) -> Option<&Variable> {
+        unsafe { self.native().findInput(name.as_ref().as_ptr()) }
+            .into_option()
+            .map(|ptr| Variable::from_native_ref(unsafe { &*ptr }))
+    }
+
+    pub fn find_child(&self, name: impl AsRef<CStr>) -> Option<usize> {
+        unsafe {
+            self.native()
+                .findChild(name.as_ref().as_ptr())
+                .try_into()
+                .ok()
+        }
+    }
 }
+
+// TODO: wrap SkRuntimeShaderBuilder

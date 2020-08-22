@@ -20,6 +20,7 @@ mod feature_id {
     pub const GL: &str = "gl";
     pub const VULKAN: &str = "vulkan";
     pub const METAL: &str = "metal";
+    pub const D3D: &str = "d3d";
     pub const TEXTLAYOUT: &str = "textlayout";
 }
 
@@ -40,6 +41,7 @@ impl Default for BuildConfiguration {
                 gl: cfg!(feature = "gl"),
                 vulkan: cfg!(feature = "vulkan"),
                 metal: cfg!(feature = "metal"),
+                d3d: cfg!(feature = "d3d"),
                 text_layout: cfg!(feature = "textlayout"),
                 animation: false,
                 dng: false,
@@ -77,6 +79,9 @@ pub struct Features {
     /// Build with Metal support?
     pub metal: bool,
 
+    /// Build with Direct3D support?
+    pub d3d: bool,
+
     /// Features related to text layout. Modules skshaper and skparagraph.
     pub text_layout: bool,
 
@@ -92,7 +97,7 @@ pub struct Features {
 
 impl Features {
     pub fn gpu(&self) -> bool {
-        self.gl || self.vulkan || self.metal
+        self.gl || self.vulkan || self.metal || self.d3d
     }
 
     /// Feature Ids used to look up prebuilt binaries.
@@ -108,6 +113,9 @@ impl Features {
         if self.metal {
             feature_ids.push(feature_id::METAL);
         }
+        if self.d3d {
+            feature_ids.push(feature_id::D3D);
+        }
         if self.text_layout {
             feature_ids.push(feature_id::TEXTLAYOUT);
         }
@@ -119,6 +127,9 @@ impl Features {
 /// This is the final, low level build configuration.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct FinalBuildConfiguration {
+    /// The Skia source directory.
+    pub skia_source_dir: PathBuf,
+
     /// The name value pairs passed as arguments to gn.
     pub gn_args: Vec<(String, String)>,
 
@@ -135,7 +146,10 @@ pub struct FinalBuildConfiguration {
 
 impl FinalBuildConfiguration {
     #[allow(clippy::cognitive_complexity)]
-    pub fn from_build_configuration(build: &BuildConfiguration) -> FinalBuildConfiguration {
+    pub fn from_build_configuration(
+        build: &BuildConfiguration,
+        skia_source_dir: &Path,
+    ) -> FinalBuildConfiguration {
         let features = &build.features;
 
         let gn_args = {
@@ -169,6 +183,10 @@ impl FinalBuildConfiguration {
 
             if features.metal {
                 args.push(("skia_use_metal", yes()));
+            }
+
+            if features.d3d {
+                args.push(("skia_use_direct3d", yes()))
             }
 
             // further flags that limit the components of Skia debug builds.
@@ -293,6 +311,9 @@ impl FinalBuildConfiguration {
             if features.metal {
                 sources.push("src/metal.cpp".into());
             }
+            if features.d3d {
+                sources.push("src/d3d.cpp".into());
+            }
             if features.gpu() {
                 sources.push("src/gpu.cpp".into());
             }
@@ -304,6 +325,7 @@ impl FinalBuildConfiguration {
         };
 
         FinalBuildConfiguration {
+            skia_source_dir: skia_source_dir.into(),
             gn_args,
             ninja_files,
             definitions: build.definitions.clone(),
@@ -382,9 +404,12 @@ impl BinariesConfiguration {
                 }
             }
             (_, _, "windows", Some("msvc")) => {
-                link_libraries.extend(vec!["usp10", "ole32", "user32", "gdi32", "fontsub"]);
+                link_libraries.extend(&["usp10", "ole32", "user32", "gdi32", "fontsub"]);
                 if features.gl {
                     link_libraries.push("opengl32");
+                }
+                if features.d3d {
+                    link_libraries.extend(&["d3d12", "dxgi", "d3dcompiler"]);
                 }
             }
             (_, "linux", "android", _) | (_, "linux", "androideabi", _) => {
@@ -429,8 +454,20 @@ impl BinariesConfiguration {
         // On Linux, the order is significant, first the static libraries we built, and then
         // the system libraries.
 
+        let target = cargo::target();
+
         for lib in &self.built_libraries {
-            cargo::add_link_lib(format!("static={}", lib));
+            // Prefixing the libraries we built with `static=` causes linker errors on Windows.
+            // https://github.com/rust-skia/rust-skia/pull/354
+            let kind_prefix = {
+                if target.is_windows() {
+                    ""
+                } else {
+                    "static="
+                }
+            };
+
+            cargo::add_link_lib(format!("{}{}", kind_prefix, lib));
         }
 
         cargo::add_link_libs(&self.link_libraries);
@@ -441,14 +478,41 @@ impl BinariesConfiguration {
     }
 }
 
-/// The full build of Skia, SkiaBindings, and the generation of bindings.rs.
+/// The full build of Skia, skia-bindings, and the generation of bindings.rs.
 pub fn build(build: &FinalBuildConfiguration, config: &BinariesConfiguration) {
+    let python2 = &prerequisites::locate_python2_cmd();
+    println!("Python 2 found: {:?}", python2);
+    let ninja = fetch_dependencies(&python2);
+    configure_skia(build, config, &python2, None);
+    build_skia(build, config, &ninja);
+}
+
+/// Build Skia without any network access.
+///
+/// An offline build expects the Skia source tree including all third party dependencies
+/// to be available.
+pub fn build_offline(
+    build: &FinalBuildConfiguration,
+    config: &BinariesConfiguration,
+    ninja_command: Option<&Path>,
+    gn_command: Option<&Path>,
+) {
+    let python2 = prerequisites::locate_python2_cmd();
+    configure_skia(&build, &config, &python2, gn_command);
+    build_skia(
+        &build,
+        &config,
+        ninja_command.unwrap_or(&ninja::default_exe_name()),
+    );
+}
+
+/// Prepares the build and returns the ninja command to use for building Skia.
+pub fn fetch_dependencies(python2: &Path) -> PathBuf {
     prerequisites::resolve_dependencies();
 
     // call Skia's git-sync-deps
 
-    let python2 = &prerequisites::locate_python2_cmd();
-    println!("Python 2 found: {:?}", python2);
+    println!("Synchronizing Skia dependencies");
 
     assert!(
         Command::new(python2)
@@ -461,8 +525,19 @@ pub fn build(build: &FinalBuildConfiguration, config: &BinariesConfiguration) {
         "`skia/tools/git-sync-deps` failed"
     );
 
-    // configure Skia
+    env::current_dir()
+        .unwrap()
+        .join("depot_tools")
+        .join(ninja::default_exe_name())
+}
 
+/// Configures Skia by calling gn
+pub fn configure_skia(
+    build: &FinalBuildConfiguration,
+    config: &BinariesConfiguration,
+    python2: &Path,
+    gn_command: Option<&Path>,
+) {
     let gn_args = build
         .gn_args
         .iter()
@@ -470,22 +545,21 @@ pub fn build(build: &FinalBuildConfiguration, config: &BinariesConfiguration) {
         .collect::<Vec<String>>()
         .join(" ");
 
-    let current_dir = env::current_dir().unwrap();
-    let gn_command = current_dir.join("skia").join("bin").join("gn");
-
-    let output_directory_str = config.output_directory.to_str().unwrap();
+    let gn_command = gn_command
+        .map(|p| p.to_owned())
+        .unwrap_or_else(|| build.skia_source_dir.join("bin").join("gn"));
 
     println!("Skia args: {}", &gn_args);
 
     let output = Command::new(gn_command)
         .args(&[
             "gen",
-            output_directory_str,
-            &format!("--script-executable={}", python2),
+            config.output_directory.to_str().unwrap(),
+            &format!("--script-executable={}", python2.to_str().unwrap()),
             &format!("--args={}", gn_args),
         ])
         .envs(env::vars())
-        .current_dir(PathBuf::from("./skia"))
+        .current_dir(&build.skia_source_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
@@ -494,19 +568,19 @@ pub fn build(build: &FinalBuildConfiguration, config: &BinariesConfiguration) {
     if output.status.code() != Some(0) {
         panic!("{:?}", String::from_utf8(output.stdout).unwrap());
     }
+}
 
-    // build Skia
-
-    let on_windows = cfg!(windows);
-
-    let ninja_command =
-        current_dir
-            .join("depot_tools")
-            .join(if on_windows { "ninja.exe" } else { "ninja" });
-
+/// Builds Skia.
+///
+/// This function assumes that all prerequisites are in place and that the output directory
+/// contains a fully configured Skia source tree generated by gn.
+pub fn build_skia(
+    build: &FinalBuildConfiguration,
+    config: &BinariesConfiguration,
+    ninja_command: &Path,
+) {
     let ninja_status = Command::new(ninja_command)
-        .current_dir(PathBuf::from("./skia"))
-        .args(&["-C", output_directory_str])
+        .args(&["-C", config.output_directory.to_str().unwrap()])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status();
@@ -518,10 +592,10 @@ pub fn build(build: &FinalBuildConfiguration, config: &BinariesConfiguration) {
         "`ninja` returned an error, please check the output for details."
     );
 
-    bindgen_gen(build, &current_dir, &config.output_directory)
+    generate_bindings(build, &config.output_directory)
 }
 
-fn bindgen_gen(build: &FinalBuildConfiguration, current_dir: &Path, output_directory: &Path) {
+fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
     let mut builder = bindgen::Builder::default()
         .generate_comments(false)
         .layout_tests(true)
@@ -532,12 +606,11 @@ fn bindgen_gen(build: &FinalBuildConfiguration, current_dir: &Path, output_direc
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
         })
+        .size_t_is_usize(true)
         .parse_callbacks(Box::new(ParseCallbacks))
         .raw_line("#![allow(clippy::all)]")
         // GrVkBackendContext contains u128 fields on macOS
         .raw_line("#![allow(improper_ctypes)]")
-        .size_t_is_usize(true)
-        .parse_callbacks(Box::new(ParseCallbacks))
         .whitelist_function("C_.*")
         .constified_enum(".*Mask")
         .constified_enum(".*Flags")
@@ -567,12 +640,11 @@ fn bindgen_gen(build: &FinalBuildConfiguration, current_dir: &Path, output_direc
         .blacklist_type("GrRecordingContextPriv")
         .raw_line("pub enum GrContextPriv {}")
         .blacklist_type("GrContextPriv")
-        .raw_line("#[allow(dead_code)] fn GrContext_priv(_: &GrContext) -> GrContextPriv { panic!(\"unexpected\") }")
-        .raw_line("#[allow(dead_code)] fn GrContext_priv1(_: &GrContext) -> GrContextPriv { panic!(\"unexpected\") }")
         .blacklist_function("GrContext_priv.*")
-        .raw_line("fn SkDeferredDisplayList_priv(_: &SkDeferredDisplayList) -> SkDeferredDisplayListPriv { panic!(\"unexpected\") }")
-        .raw_line("fn SkDeferredDisplayList_priv1(_: &SkDeferredDisplayList) -> SkDeferredDisplayListPriv { panic!(\"unexpected\") }")
         .blacklist_function("SkDeferredDisplayList_priv.*")
+        .raw_line("pub enum SkVerticesPriv {}")
+        .blacklist_type("SkVerticesPriv")
+        .blacklist_function("SkVertices_priv.*")
         // Vulkan reexports that got swallowed by making them opaque.
         // (these can not be whitelisted by a extern "C" function)
         .whitelist_type("VkPhysicalDeviceFeatures")
@@ -615,9 +687,7 @@ fn bindgen_gen(build: &FinalBuildConfiguration, current_dir: &Path, output_direc
         builder = builder.header(source);
     }
 
-    // TODO: may put the include paths into the FinalBuildConfiguration?
-
-    let include_path = current_dir.join("skia");
+    let include_path = &build.skia_source_dir;
     cargo::rerun_if_changed(include_path.join("include"));
 
     builder = builder.clang_arg(format!("-I{}", include_path.display()));
@@ -679,6 +749,8 @@ fn bindgen_gen(build: &FinalBuildConfiguration, current_dir: &Path, output_direc
     }
 
     println!("COMPILING BINDINGS: {:?}", build.binding_sources);
+    // we add skia-bindings later on.
+    cc_build.cargo_metadata(false);
     cc_build.compile(lib::SKIA_BINDINGS);
 
     println!("GENERATING BINDINGS");
@@ -871,6 +943,10 @@ type EnumEntry = (&'static str, fn(&str, &str) -> String);
 
 const ENUM_TABLE: &[EnumEntry] = &[
     //
+    // codec/
+    //
+    ("DocumentStructureType", rewrite::k_xxx),
+    //
     // core/ effects/
     //
     ("SkApplyPerspectiveClip", rewrite::k_xxx),
@@ -979,10 +1055,12 @@ const ENUM_TABLE: &[EnumEntry] = &[
     ("TextAlign", rewrite::k_xxx),
     ("TextDirection", rewrite::k_xxx_uppercase),
     ("TextBaseline", rewrite::k_xxx),
+    ("TextHeightBehavior", rewrite::k_xxx),
     //
     // TextStyle.h
     //
     ("TextDecorationStyle", rewrite::k_xxx),
+    ("TextDecorationMode", rewrite::k_xxx),
     ("StyleType", rewrite::k_xxx),
     ("PlaceholderAlignment", rewrite::k_xxx),
     //
@@ -996,6 +1074,14 @@ const ENUM_TABLE: &[EnumEntry] = &[
     ("VkSamplerYcbcrModelConversion", rewrite::vk),
     ("VkSamplerYcbcrRange", rewrite::vk),
     ("VkStructureType", rewrite::vk),
+    // m84: SkPath::Verb
+    ("Verb", rewrite::k_xxx_name),
+    // m84: SkVertices::Attribute::Usage
+    ("Usage", rewrite::k_xxx),
+    ("GrSemaphoresSubmitted", rewrite::k_xxx),
+    ("BackendSurfaceAccess", rewrite::k_xxx),
+    // m85: VkSharingMode
+    ("VkSharingMode", rewrite::vk),
 ];
 
 pub(crate) mod rewrite {
@@ -1061,12 +1147,12 @@ mod prerequisites {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    pub fn locate_python2_cmd() -> &'static str {
+    pub fn locate_python2_cmd() -> PathBuf {
         const PYTHON_CMDS: [&str; 2] = ["python", "python2"];
         for python in PYTHON_CMDS.as_ref() {
             println!("Probing '{}'", python);
             if let Some(true) = is_python_version_2(python) {
-                return python;
+                return python.into();
             }
         }
 
@@ -1271,5 +1357,13 @@ pub(crate) mod definitions {
         let mut uniques = HashSet::new();
         definitions.retain(|e| uniques.insert(e.0.clone()));
         definitions
+    }
+}
+
+mod ninja {
+    use std::path::PathBuf;
+
+    pub fn default_exe_name() -> PathBuf {
+        if cfg!(windows) { "ninja.exe" } else { "ninja" }.into()
     }
 }

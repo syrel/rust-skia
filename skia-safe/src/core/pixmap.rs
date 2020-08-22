@@ -11,6 +11,8 @@ use std::os::raw;
 use std::{ptr, slice};
 
 pub type Pixmap = Handle<SkPixmap>;
+unsafe impl Send for Pixmap {}
+unsafe impl Sync for Pixmap {}
 
 impl NativeDrop for SkPixmap {
     fn drop(&mut self) {
@@ -41,9 +43,9 @@ impl Handle<SkPixmap> {
         assert!(pixels.len() >= height * row_bytes);
 
         let pm = Pixmap::from_native(SkPixmap {
-            fPixels: ptr::null(),
-            fRowBytes: 0,
-            fInfo: ImageInfo::new_unknown(None).native().clone(),
+            fPixels: pixels.as_ptr() as _,
+            fRowBytes: row_bytes,
+            fInfo: info.native().clone(),
         });
         pm.borrows(pixels)
     }
@@ -229,10 +231,22 @@ impl Handle<SkPixmap> {
     }
 
     pub fn erase_4f(&self, color: impl AsRef<Color4f>, subset: Option<&IRect>) -> bool {
+        self.erase_with_colorspace(color, None, subset)
+    }
+
+    pub fn erase_with_colorspace(
+        &self,
+        color: impl AsRef<Color4f>,
+        cs: Option<&ColorSpace>,
+        subset: Option<&IRect>,
+    ) -> bool {
         let color = color.as_ref();
         unsafe {
-            self.native()
-                .erase1(color.native(), subset.native_ptr_or_null())
+            self.native().erase1(
+                color.native(),
+                cs.native_ptr_or_null_mut_force(),
+                subset.native_ptr_or_null(),
+            )
         }
     }
 }

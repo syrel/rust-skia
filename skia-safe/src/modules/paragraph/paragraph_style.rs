@@ -1,11 +1,14 @@
 use super::{FontFamilies, TextAlign, TextDirection, TextStyle};
 use crate::interop::{AsStr, FromStrs, SetStr};
+use crate::modules::paragraph::TextHeightBehavior;
 use crate::prelude::*;
 use crate::{interop, scalar, FontStyle};
 use skia_bindings as sb;
 use std::slice;
 
 pub type StrutStyle = Handle<sb::skia_textlayout_StrutStyle>;
+unsafe impl Send for StrutStyle {}
+unsafe impl Sync for StrutStyle {}
 
 impl NativeDrop for sb::skia_textlayout_StrutStyle {
     fn drop(&mut self) {
@@ -109,6 +112,8 @@ impl Handle<sb::skia_textlayout_StrutStyle> {
 }
 
 pub type ParagraphStyle = Handle<sb::skia_textlayout_ParagraphStyle>;
+unsafe impl Send for ParagraphStyle {}
+unsafe impl Sync for ParagraphStyle {}
 
 impl NativeDrop for sb::skia_textlayout_ParagraphStyle {
     fn drop(&mut self) {
@@ -205,6 +210,15 @@ impl Handle<sb::skia_textlayout_ParagraphStyle> {
 
     pub fn set_height(&mut self, height: scalar) -> &mut Self {
         self.native_mut().fHeight = height;
+        self
+    }
+
+    pub fn text_height_behavior(&self) -> TextHeightBehavior {
+        self.native().fTextHeightBehavior
+    }
+
+    pub fn set_text_height_behavior(&mut self, v: TextHeightBehavior) -> &mut Self {
+        self.native_mut().fTextHeightBehavior = v;
         self
     }
 

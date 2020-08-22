@@ -46,23 +46,6 @@ extern "C" SkSurface* C_SkSurface_MakeFromBackendRenderTarget(
             surfaceProps).release();
 }
 
-extern "C" SkSurface* C_SkSurface_MakeFromBackendTextureAsRenderTarget(
-        GrContext* context,
-        const GrBackendTexture* backendTexture,
-        GrSurfaceOrigin origin,
-        int sampleCnt,
-        SkColorType colorType,
-        SkColorSpace* colorSpace,
-        const SkSurfaceProps* surfaceProps) {
-    return SkSurface::MakeFromBackendTextureAsRenderTarget(
-            context,
-            *backendTexture,
-            origin,
-            sampleCnt,
-            colorType,
-            sp(colorSpace), surfaceProps).release();
-}
-
 extern "C" SkSurface* C_SkSurface_MakeRenderTarget(
     GrContext* context,
     SkBudgeted budgeted,
@@ -177,6 +160,14 @@ extern "C" bool C_GrBackendFormat_Equals(const GrBackendFormat* lhs, const GrBac
 }
 
 //
+// gpu/GrBackendSurfaceMutableState.h
+//
+
+extern "C" void C_GrBackendSurfaceMutableState_destruct(GrBackendSurfaceMutableState* self) {
+    self->~GrBackendSurfaceMutableState();
+}
+
+//
 // gpu/GrContext.h
 //
 
@@ -188,8 +179,8 @@ extern "C" bool C_GrContext_abandoned(GrContext* self) {
     return self->abandoned();
 }
 
-extern "C" void C_GrContext_flush(GrContext* self) {
-    self->flush();
+extern "C" void C_GrContext_flushAndSubmit(GrContext* self) {
+    self->flushAndSubmit();
 }
 
 extern "C" size_t C_GrContext_ComputeImageSize(SkImage* image, GrMipMapped mm, bool useNextPow2) {
@@ -202,6 +193,10 @@ extern "C" void C_GrContext_defaultBackendFormat(const GrContext* self, SkColorT
 
 extern "C" void C_GrContext_compressedBackendFormat(const GrContext* self, SkImage::CompressionType compression, GrBackendFormat* result) {
     *result = self->compressedBackendFormat(compression);
+}
+
+extern "C" void C_GrContext_performDeferredCleanup(GrContext* self, long msNotUsed) {
+    self->performDeferredCleanup(std::chrono::milliseconds(msNotUsed));
 }
 
 //
