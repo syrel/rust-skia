@@ -68,6 +68,7 @@ impl FontArguments<'_> {
     // because it borrows the coordinates referenced by VariationPosition.
     //
     // If we would return `Self`, position's Coordinates would not be borrowed.
+    #[cfg(tux_wasm)]
     pub fn set_variation_design_position(mut self, position: VariationPosition) -> FontArguments {
         let position = SkFontArguments_VariationPosition {
             coordinates: position.coordinates.native().as_ptr(),

@@ -645,20 +645,23 @@ impl M44 {
         sin_angle: scalar,
         cos_angle: scalar,
     ) -> &mut Self {
-        unsafe {
-            self.native_mut()
-                .setRotateUnitSinCos(axis.into_native(), sin_angle, cos_angle)
-        };
-        self
+        unimplemented!("in wasm")
+//         unsafe {
+//             self.native_mut()
+//                 .setRotateUnitSinCos(axis.into_native(), sin_angle, cos_angle)
+//         };
+//         self
     }
 
     pub fn set_rotate_unit(&mut self, axis: V3, radians: scalar) -> &mut Self {
-        self.set_rotate_unit_sin_cos(axis, radians.sin(), radians.cos())
+        unimplemented!("in wasm")
+//         self.set_rotate_unit_sin_cos(axis, radians.sin(), radians.cos())
     }
 
     pub fn set_rotate(&mut self, axis: V3, radians: scalar) -> &mut Self {
-        unsafe { self.native_mut().setRotate(axis.into_native(), radians) };
-        self
+        unimplemented!("in wasm")
+//         unsafe { self.native_mut().setRotate(axis.into_native(), radians) };
+//         self
     }
 
     #[deprecated(since = "0.30.0", note = "use M44::col_major() and M44::set_concat()")]

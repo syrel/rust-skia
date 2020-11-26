@@ -350,14 +350,15 @@ impl Handle<SkFont> {
 
         let origin = origin.unwrap_or_default();
 
-        unsafe {
-            self.native().getPos(
-                glyphs.as_ptr(),
-                count.try_into().unwrap(),
-                pos.native_mut().as_mut_ptr(),
-                *origin.native(),
-            )
-        }
+//         unsafe {
+//             self.native().getPos(
+//                 glyphs.as_ptr(),
+//                 count.try_into().unwrap(),
+//                 pos.native_mut().as_mut_ptr(),
+//                 *origin.native(),
+//             )
+//         }
+        unimplemented!("disabled in wasm")
     }
 
     pub fn get_x_pos(&self, glyphs: &[GlyphId], xpos: &mut [scalar], origin: Option<scalar>) {
