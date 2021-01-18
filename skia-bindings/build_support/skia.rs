@@ -11,8 +11,8 @@ use std::{env, fs};
 mod lib {
     pub const SKIA: &str = "skia";
     pub const SKIA_BINDINGS: &str = "skia-bindings";
-    pub const SKSHAPER: &str = "skshaper";
-    pub const SKPARAGRAPH: &str = "skparagraph";
+    pub const SK_SHAPER: &str = "skshaper";
+    pub const SK_PARAGRAPH: &str = "skparagraph";
 }
 
 /// Feature identifiers define the additional configuration parts of the binaries to download.
@@ -480,14 +480,14 @@ impl BinariesConfiguration {
 
         if features.text_layout {
             additional_files.push(ICUDTL_DAT.into());
-            built_libraries.push(lib::SKPARAGRAPH.into());
-            built_libraries.push(lib::SKSHAPER.into());
+            built_libraries.push(lib::SK_PARAGRAPH.into());
+            built_libraries.push(lib::SK_SHAPER.into());
         }
 
         let mut link_libraries = Vec::new();
 
         match target.as_strs() {
-            (_, "unknown", "linux", Some("gnu")) => {
+            (_, "unknown", "linux", _) => {
                 link_libraries.extend(vec!["stdc++", "fontconfig", "freetype"]);
                 if features.gl {
                     if features.egl {
@@ -1044,6 +1044,8 @@ const OPAQUE_TYPES: &[&str] = &[
     // m87:
     "GrD3DAlloc",
     "GrD3DMemoryAllocator",
+    // m87, yuva_pixmaps
+    "std::tuple",
 ];
 
 const BLACKLISTED_TYPES: &[&str] = &[
@@ -1238,6 +1240,15 @@ const ENUM_TABLE: &[EnumEntry] = &[
     ("SkMipmapMode", rewrite::k_xxx),
     ("Enable", rewrite::k_xxx),
     ("ShaderCacheStrategy", rewrite::k_xxx),
+    // m87:
+    // SkYUVAInfo_PlanarConfig
+    ("PlanarConfig", rewrite::k_xxx),
+    ("Siting", rewrite::k_xxx),
+    // SkYUVAPixmapInfo
+    ("DataType", rewrite::k_xxx),
+    // m88:
+    // SkYUVAInfo_*
+    ("PlaneConfig", rewrite::k_xxx),
 ];
 
 pub(crate) mod rewrite {

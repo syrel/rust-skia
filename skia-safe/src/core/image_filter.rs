@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::{ColorFilter, FilterQuality, IRect, Matrix, NativeFlattenable, Rect};
+use crate::{ColorFilter, IRect, Matrix, NativeFlattenable, Rect};
 use skia_bindings as sb;
 use skia_bindings::{
     SkColorFilter, SkFlattenable, SkImageFilter, SkImageFilter_CropRect, SkRefCntBase,
@@ -131,7 +131,7 @@ impl RCHandle<SkImageFilter> {
     pub fn color_filter_node(&self) -> Option<ColorFilter> {
         let mut filter_ptr: *mut SkColorFilter = ptr::null_mut();
         if unsafe { sb::C_SkImageFilter_isColorFilterNode(self.native(), &mut filter_ptr) } {
-            // according to the documentation, this must be set to a ref'd colorfilter
+            // according to the documentation, this must be set to a ref'd color filter
             // (which is one with an increased ref count I assume).
             ColorFilter::from_ptr(filter_ptr)
         } else {
@@ -184,13 +184,5 @@ impl RCHandle<SkImageFilter> {
         ImageFilter::from_ptr(unsafe {
             sb::C_SkImageFilter_makeWithLocalMatrix(self.native(), matrix.native())
         })
-    }
-
-    #[deprecated(since = "0.19.0", note = "use image_filters::matrix_transform()")]
-    pub fn with_matrix(self, matrix: &Matrix, quality: FilterQuality) -> ImageFilter {
-        ImageFilter::from_ptr(unsafe {
-            sb::C_SkImageFilter_MakeMatrixFilter(matrix.native(), quality, self.into_ptr())
-        })
-        .unwrap()
     }
 }
