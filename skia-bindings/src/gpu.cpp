@@ -356,7 +356,7 @@ extern "C" SkImage* C_SkImage_MakeFromTexture(
 }
 
 extern "C" SkImage* C_SkImage_MakeFromTextureWithReleaseProc(
-        GrContext* context,
+        GrRecordingContext* context,
         const GrBackendTexture* backendTexture,
         GrSurfaceOrigin origin,
         SkColorType colorType,
