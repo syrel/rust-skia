@@ -634,7 +634,7 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
         // on macOS some arrays that are used in opaque types get too large to support Debug.
         // (for example High Sierra: [u16; 105])
         // TODO: may reenable when const generics land in stable.
-        .derive_debug(false)
+        .derive_debug(true)
         .default_enum_style(EnumVariation::Rust {
             non_exhaustive: false,
         })
