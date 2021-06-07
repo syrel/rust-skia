@@ -804,7 +804,7 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
         .clang_arg("-v");
         
     // wasm: blacklist due to unknown/emscripten abi incompatibilties
-    builder = builder
+    let mut builder = builder
         .blacklist_function("C_SkFontArguments_setVariationDesignPosition")
         .blacklist_function("SkM44_setRotate")
         .blacklist_function("SkM44_setRotateUnitSinCos")
