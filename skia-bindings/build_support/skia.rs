@@ -375,6 +375,7 @@ impl FinalBuildConfiguration {
                 ("wasm32", "unknown", "unknown", _) => {
                     args.push(("cc", quote("emcc")));
                     args.push(("cxx", quote("em++")));
+                    args.push(("ar", quote("emar")));
                     args.push(("skia_enable_fontmgr_custom", yes()));
                     args.push(("skia_gl_standard", quote("webgl")));
                     args.push(("skia_use_freetype", yes()));
@@ -382,7 +383,6 @@ impl FinalBuildConfiguration {
                     args.push(("skia_use_webgl", yes())); // yes_if(features.gpu())
                     args.push(("target_cpu", quote("wasm")));
                 }
-                _ => {}
             }
 
             if use_expat {
@@ -804,11 +804,11 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
         .clang_arg("-v");
         
     // wasm: blacklist due to unknown/emscripten abi incompatibilties
-    builder = builder
-        .blacklist_function("C_SkFontArguments_setVariationDesignPosition")
-        .blacklist_function("SkM44_setRotate")
-        .blacklist_function("SkM44_setRotateUnitSinCos")
-        .blacklist_function("SkFont_getPos");
+    let mut builder = builder
+        .blocklist_function("C_SkFontArguments_setVariationDesignPosition")
+        .blocklist_function("SkM44_setRotate")
+        .blocklist_function("SkM44_setRotateUnitSinCos")
+        .blocklist_function("SkFont_getPos");
 
     // don't generate destructors on Windows: https://github.com/rust-skia/rust-skia/issues/318
     let mut builder = if cfg!(target_os = "windows") {
