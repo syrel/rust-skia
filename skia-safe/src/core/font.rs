@@ -96,6 +96,11 @@ impl Handle<SkFont> {
         (SkFont_PrivFlags::from(self.native().fFlags) & flag) != 0
     }
 
+    #[deprecated(since = "0.15.0", note = "use set_force_auto_hinting()")]
+    pub fn set_force_autohinting(&mut self, force_auto_hinting: bool) -> &mut Self {
+        self.set_force_auto_hinting(force_auto_hinting)
+    }
+
     pub fn set_force_auto_hinting(&mut self, force_auto_hinting: bool) -> &mut Self {
         unsafe { self.native_mut().setForceAutoHinting(force_auto_hinting) }
         self
@@ -345,14 +350,15 @@ impl Handle<SkFont> {
 
         let origin = origin.unwrap_or_default();
 
-        unsafe {
-            self.native().getPos(
-                glyphs.as_ptr(),
-                count.try_into().unwrap(),
-                pos.native_mut().as_mut_ptr(),
-                *origin.native(),
-            )
-        }
+//         unsafe {
+//             self.native().getPos(
+//                 glyphs.as_ptr(),
+//                 count.try_into().unwrap(),
+//                 pos.native_mut().as_mut_ptr(),
+//                 *origin.native(),
+//             )
+//         }
+        unimplemented!("disabled in wasm")
     }
 
     pub fn get_x_pos(&self, glyphs: &[GlyphId], xpos: &mut [scalar], origin: Option<scalar>) {

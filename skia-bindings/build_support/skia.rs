@@ -346,6 +346,18 @@ impl FinalBuildConfiguration {
                     args.push(("target_os", quote(skia_target_os)));
                     args.push(("target_cpu", quote(clang::target_arch(arch))));
                 }
+                ("wasm32", "unknown", "emscripten", _) | 
+                ("wasm32", "unknown", "unknown", _) => {
+                    args.push(("cc", quote("emcc")));
+                    args.push(("cxx", quote("em++")));
+                    args.push(("skia_enable_fontmgr_custom", yes()));
+                    args.push(("skia_gl_standard", quote("webgl")));
+                    args.push(("skia_use_freetype", yes()));
+                    args.push(("skia_use_system_freetype2", no()));
+                    args.push(("skia_use_webgl", yes())); // yes_if(features.gpu())
+                    args.push(("target_cpu", quote("wasm")));
+                }
+                _ => {}
             }
 
             if use_expat {
@@ -530,6 +542,10 @@ impl BinariesConfiguration {
             }
             (_, "apple", "ios", _) => {
                 link_libraries.extend(ios::link_libraries(features));
+            }
+            ("wasm32", "unknown", "emscripten", _) | 
+            ("wasm32", "unknown", "unknown", _) => {
+                link_libraries.extend(vec!["GL"]);
             }
             _ => panic!("unsupported target: {:?}", cargo::target()),
         };
@@ -761,6 +777,13 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
         .clang_arg("-std=c++17")
         .clang_args(&["-x", "c++"])
         .clang_arg("-v");
+        
+    // wasm: blacklist due to unknown/emscripten abi incompatibilties
+    builder = builder
+        .blacklist_function("C_SkFontArguments_setVariationDesignPosition")
+        .blacklist_function("SkM44_setRotate")
+        .blacklist_function("SkM44_setRotateUnitSinCos")
+        .blacklist_function("SkFont_getPos");
 
     // don't generate destructors on Windows: https://github.com/rust-skia/rust-skia/issues/318
     let mut builder = if cfg!(target_os = "windows") {
@@ -786,7 +809,7 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
     }
 
     let mut cc_build = Build::new();
-
+    
     for source in &build.binding_sources {
         cc_build.file(source);
         let source = source.to_str().unwrap();
@@ -879,6 +902,31 @@ fn generate_bindings(build: &FinalBuildConfiguration, output_directory: &Path) {
             for arg in ios::additional_clang_args(arch) {
                 builder = builder.clang_arg(arg);
             }
+        }
+        ("wasm32", "unknown", "emscripten", _) | 
+        ("wasm32", "unknown", "unknown", _) => {
+            cc_build.compiler("em++");
+            cc_build.flag("-fno-exceptions");
+            cc_build.flag("-fno-rtti");
+            cc_build.flag("-DSK_FORCE_8_BYTE_ALIGNMENT");
+    
+            let add_sys_include = |builder: bindgen::Builder, path: &str| -> bindgen::Builder {
+                let emsdk = env!("EMSDK");
+                let cflag = format!("-isystem{}/upstream/emscripten/system/{}", emsdk, path);
+                builder.clang_arg(&cflag)
+            };
+            
+            // visibility=default, otherwise some types may be missing:
+            // https://github.com/rust-lang/rust-bindgen/issues/751#issuecomment-555735577
+            builder = builder.clang_arg("-fvisibility=default");
+            builder = builder.clang_arg("--target=wasm32-unknown-emscripten");
+            
+            // Add C++ includes (otherwise build will fail with <cmath> not found)
+            builder = builder.clang_arg("-nobuiltininc");
+            builder = add_sys_include(builder, "lib/libc/musl/arch/emscripten");
+            builder = add_sys_include(builder, "include/libcxx");
+            builder = add_sys_include(builder, "include/libc");
+            builder = add_sys_include(builder, "include");
         }
         _ => {}
     }
