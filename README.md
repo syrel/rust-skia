@@ -2,10 +2,10 @@
 
 [![crates.io](https://img.shields.io/crates/v/skia-safe)](https://crates.io/crates/skia-safe) [![license](https://img.shields.io/crates/l/skia-safe)](LICENSE) [![Build Status](https://dev.azure.com/pragmatrix-github/rust-skia/_apis/build/status/rust-skia.rust-skia?branchName=master)](https://dev.azure.com/pragmatrix-github/rust-skia/_build/latest?definitionId=2&branchName=master)
 
-Skia Submodule Status: chrome/m88 ([upstream changes][skia-upstream], [our changes][skia-ours]).
+Skia Submodule Status: chrome/m91 ([upstream changes][skia-upstream], [our changes][skia-ours]).
 
-[skia-upstream]: https://github.com/rust-skia/skia/compare/m88-0.36.2...google:chrome/m88
-[skia-ours]: https://github.com/google/skia/compare/chrome/m88...rust-skia:m88-0.36.2
+[skia-upstream]: https://github.com/rust-skia/skia/compare/m91-0.39.3...google:chrome/m91
+[skia-ours]: https://github.com/google/skia/compare/chrome/m91...rust-skia:m91-0.39.3
 
 ## Goals
 
@@ -17,7 +17,7 @@ This project provides _up to date_ safe bindings that bridge idiomatic Rust with
 
 Because we [can't build on docs.rs](https://docs.rs/crate/skia-safe/0.34.0/builds), the `cargo doc` output for skia-safe is manually created and uploaded to [rust-skia.github.io](https://rust-skia.github.io/doc/skia_safe).
 
-We are [planning to add function level documentation](https://github.com/rust-skia/rust-skia/issues/23) by linking to Skia's documentation through [intra doc links](https://github.com/rust-lang/rfcs/blob/master/text/1946-intra-rustdoc-links.md), which should be stabilized soon.
+We (slowly) [add more documentation](https://github.com/rust-skia/rust-skia/issues/446) by converting Skia's Doxygen comments to Rust.
 
 ### Crate
 
@@ -161,13 +161,13 @@ For example, to compile for `aarch64`:
    ```bash
    rustup target install aarch64-linux-android
    ```
-2. Download the [r21d NDK](https://developer.android.com/ndk/downloads) for your host architecture and unzip it.
+2. Download the [r21e NDK](https://developer.android.com/ndk/downloads) for your host architecture and unzip it.
 3. Compile your package for the `aarch64-linux-android` target:
 
 On **macOS**:
 
 ```bash
-export ANDROID_NDK=:path-to-android-ndk-r21d
+export ANDROID_NDK=:path-to-android-ndk-r21e
 export PATH=$PATH:$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
 export CC_aarch64_linux_android=aarch64-linux-android26-clang
 export CXX_aarch64_linux_android=aarch64-linux-android26-clang++
@@ -181,7 +181,7 @@ Note: we don't support Apple's Clang 11 to build for Android on macOS, so you ne
 On **Linux**:
 
 ```bash
-export ANDROID_NDK=:path-to-android-ndk-r21d
+export ANDROID_NDK=:path-to-android-ndk-r21e
 export PATH=$PATH:$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
 export CC_aarch64_linux_android=aarch64-linux-android26-clang
 export CXX_aarch64_linux_android=aarch64-linux-android26-clang++
@@ -193,7 +193,7 @@ cargo build -vv --target aarch64-linux-android
 On **Windows** the Android NDK clang executable must be invoked through `.cmd` scripts:
 
 ```bash
-export ANDROID_NDK=:path-to-android-ndk-r21d
+export ANDROID_NDK=:path-to-android-ndk-r21e
 export PATH=$PATH:$ANDROID_NDK/toolchains/llvm/prebuilt/windows-x86_64/bin
 export CC_aarch64_linux_android=aarch64-linux-android26-clang.cmd
 export CXX_aarch64_linux_android=aarch64-linux-android26-clang++.cmd
@@ -257,7 +257,13 @@ cargo run -- --help
 An example that opens an OpenGL Window and draws the rust-skia icon with skia-safe (contributed by [@nornagon](https://github.com/nornagon)).
 
 ```bash
-(cd skia-safe && cargo run --example gl-window --features "gl")
+cargo run --example gl-window --features gl
+```
+
+On Linux the feature `x11` needs to be enabled:
+
+```bash
+cargo run --example gl-window --features gl,x11
 ```
 
 ## Example Images

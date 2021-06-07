@@ -1,9 +1,7 @@
 #![allow(deprecated)]
-use crate::prelude::*;
-use crate::{scalar, Matrix, Scalar, Vector3};
-use skia_bindings as sb;
-use skia_bindings::{SkMatrix44, SkVector4};
-use std::ops;
+use crate::{prelude::*, scalar, Matrix, Scalar, Vector3};
+use skia_bindings::{self as sb, SkMatrix44, SkVector4};
+use std::{fmt, ops};
 
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -104,10 +102,19 @@ impl Default for Matrix44 {
     }
 }
 
-impl Into<Matrix> for Matrix44 {
-    fn into(self) -> Matrix {
+impl fmt::Debug for Matrix44 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Matrix44")
+            .field("mat", &self.native().fMat)
+            .field("type", &self.get_type())
+            .finish()
+    }
+}
+
+impl From<Matrix44> for Matrix {
+    fn from(m44: Matrix44) -> Self {
         let mut m = Matrix::new_identity();
-        unsafe { sb::C_SkMatrix44_SkMatrix(self.native(), m.native_mut()) };
+        unsafe { sb::C_SkMatrix44_SkMatrix(m44.native(), m.native_mut()) };
         m
     }
 }

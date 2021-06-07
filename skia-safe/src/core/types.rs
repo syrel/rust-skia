@@ -45,7 +45,7 @@ impl From<u32> for FourByteTag {
 }
 
 impl FourByteTag {
-    pub fn from_chars(a: char, b: char, c: char, d: char) -> Self {
+    pub const fn from_chars(a: char, b: char, c: char, d: char) -> Self {
         Self(
             (a as u8 as u32) << 24
                 | (b as u8 as u32) << 16
@@ -54,7 +54,7 @@ impl FourByteTag {
         )
     }
 
-    pub fn new(v: u32) -> Self {
+    pub const fn new(v: u32) -> Self {
         Self(v)
     }
 
@@ -86,6 +86,7 @@ pub type Unichar = skia_bindings::SkUnichar;
 // pub(crate) type MSec = skia_bindings::SkMSec;
 // pub(crate) const MSEC_MAX: u32 = std::i32::MAX as u32;
 
+#[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Budgeted(bool);
 

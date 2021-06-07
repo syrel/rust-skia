@@ -1,9 +1,8 @@
 #[cfg(feature = "gpu")]
 use crate::gpu;
-use crate::prelude::*;
-use crate::{image, ColorSpace, Data, ISize, ImageInfo, Matrix, Paint, Picture};
-use skia_bindings as sb;
-use skia_bindings::SkImageGenerator;
+use crate::{image, prelude::*, ColorSpace, Data, ISize, ImageInfo, Matrix, Paint, Picture};
+use skia_bindings::{self as sb, SkImageGenerator};
+use std::fmt;
 
 pub type ImageGenerator = RefHandle<SkImageGenerator>;
 unsafe impl Send for ImageGenerator {}
@@ -15,7 +14,16 @@ impl NativeDrop for SkImageGenerator {
     }
 }
 
-impl RefHandle<SkImageGenerator> {
+impl fmt::Debug for ImageGenerator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImageGenerator")
+            .field("unique_id", &self.unique_id())
+            .field("info", &self.info())
+            .finish()
+    }
+}
+
+impl ImageGenerator {
     pub fn unique_id(&self) -> u32 {
         self.native().fUniqueID
     }
@@ -35,13 +43,7 @@ impl RefHandle<SkImageGenerator> {
 
     #[must_use]
     pub fn get_pixels(&mut self, info: &ImageInfo, pixels: &mut [u8], row_bytes: usize) -> bool {
-        // TODO: check if other functions similar to get_pixels use the same asserts:
-        assert!(info.height() > 0);
-        assert!(
-            pixels.len()
-                >= ((info.height() - 1) as usize) * row_bytes
-                    + ((info.width() as usize) * info.bytes_per_pixel())
-        );
+        assert!(info.valid_pixels(row_bytes, pixels));
         unsafe {
             self.native_mut()
                 .getPixels(info.native(), pixels.as_mut_ptr() as _, row_bytes)

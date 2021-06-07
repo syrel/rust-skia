@@ -1,10 +1,12 @@
-use crate::interop::{MemoryStream, NativeStreamBase};
-use crate::prelude::*;
-use crate::{font_arguments, interop, FontArguments};
-use crate::{font_parameters::VariationAxis, Data, FontStyle, GlyphId, Rect, Unichar};
-use skia_bindings as sb;
-use skia_bindings::{SkRefCntBase, SkTypeface, SkTypeface_LocalizedStrings};
-use std::{ffi, ptr};
+use crate::{
+    font_arguments,
+    font_parameters::VariationAxis,
+    interop::{self, MemoryStream, NativeStreamBase, StreamAsset},
+    prelude::*,
+    Data, FontArguments, FontStyle, GlyphId, Rect, Unichar,
+};
+use skia_bindings::{self as sb, SkRefCntBase, SkTypeface, SkTypeface_LocalizedStrings};
+use std::{ffi, fmt, ptr};
 
 pub type FontId = skia_bindings::SkFontID;
 pub type FontTableTag = skia_bindings::SkFontTableTag;
@@ -29,13 +31,25 @@ impl NativeRefCountedBase for SkTypeface {
     type Base = SkRefCntBase;
 }
 
-impl Default for RCHandle<SkTypeface> {
+impl Default for Typeface {
     fn default() -> Self {
         Typeface::from_ptr(unsafe { sb::C_SkTypeface_MakeDefault() }).unwrap()
     }
 }
 
-impl RCHandle<SkTypeface> {
+impl fmt::Debug for Typeface {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Typeface")
+            .field("font_style", &self.font_style())
+            .field("is_fixed_pitch", &self.is_fixed_pitch())
+            .field("unique_id", &self.unique_id())
+            .field("family_name", &self.family_name())
+            .field("bounds", &self.bounds())
+            .finish()
+    }
+}
+
+impl Typeface {
     // Canonical new:
     pub fn new(family_name: impl AsRef<str>, font_style: FontStyle) -> Option<Self> {
         Self::from_name(family_name, font_style)
@@ -93,7 +107,7 @@ impl RCHandle<SkTypeface> {
         }
     }
 
-    pub fn unique_id(self) -> FontId {
+    pub fn unique_id(&self) -> FontId {
         self.native().fUniqueID
     }
 
@@ -106,9 +120,9 @@ impl RCHandle<SkTypeface> {
     }
 
     pub fn from_name(family_name: impl AsRef<str>, font_style: FontStyle) -> Option<Typeface> {
-        let familiy_name = ffi::CString::new(family_name.as_ref()).ok()?;
+        let family_name = ffi::CString::new(family_name.as_ref()).ok()?;
         Typeface::from_ptr(unsafe {
-            sb::C_SkTypeface_MakeFromName(familiy_name.as_ptr(), *font_style.native())
+            sb::C_SkTypeface_MakeFromName(family_name.as_ptr(), *font_style.native())
         })
     }
 
@@ -237,7 +251,19 @@ impl RCHandle<SkTypeface> {
             .if_true_then_some(|| name.as_str().into())
     }
 
-    // TODO: openStream()
+    pub fn to_font_data(&self) -> Option<(Vec<u8>, usize)> {
+        let mut ttc_index = 0;
+        StreamAsset::from_ptr(unsafe { sb::C_SkTypeface_openStream(self.native(), &mut ttc_index) })
+            .and_then(|mut stream| {
+                let length = unsafe { sb::C_SkStreamAsset_getLength(stream.native()) };
+                let mut data = vec![0u8; length];
+                let stream = stream.native_mut().as_stream_mut();
+                let read =
+                    unsafe { sb::C_SkStream_read(stream, data.as_mut_ptr() as _, data.len()) };
+                (read == data.len()).if_true_some((data, ttc_index.try_into().unwrap()))
+            })
+    }
+
     // TODO: createScalerContext()
 
     pub fn bounds(&self) -> Rect {
@@ -253,7 +279,13 @@ impl NativeDrop for SkTypeface_LocalizedStrings {
     }
 }
 
-impl Iterator for RefHandle<SkTypeface_LocalizedStrings> {
+impl fmt::Debug for LocalizedStringsIter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LocalizedStringsIter").finish()
+    }
+}
+
+impl Iterator for LocalizedStringsIter {
     type Item = LocalizedString;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -273,33 +305,46 @@ impl Iterator for RefHandle<SkTypeface_LocalizedStrings> {
     }
 }
 
-#[test]
-fn serialize_and_deserialize_default_typeface() {
-    let tf = Typeface::default();
-    let serialized = tf.serialize(SerializeBehavior::DoIncludeData);
-    // On Android, the deserialized typeface name changes from sans-serif to Roboto.
-    // (which is probably OK, because Roboto _is_ the default font, so we do another
-    // serialization / deserialization and compare the family name with already deserialized
-    // one.)
-    let deserialized = Typeface::deserialize(&serialized).unwrap();
-    let serialized2 = deserialized.serialize(SerializeBehavior::DoIncludeData);
-    let deserialized2 = Typeface::deserialize(&serialized2).unwrap();
+#[cfg(test)]
+mod tests {
+    use super::{SerializeBehavior, Typeface};
 
-    // why aren't they not equal?
-    // assert!(Typeface::equal(&tf, &deserialized));
-    assert_eq!(deserialized.family_name(), deserialized2.family_name());
-}
+    #[test]
+    fn serialize_and_deserialize_default_typeface() {
+        let tf = Typeface::default();
+        let serialized = tf.serialize(SerializeBehavior::DoIncludeData);
+        // On Android, the deserialized typeface name changes from sans-serif to Roboto.
+        // (which is probably OK, because Roboto _is_ the default font, so we do another
+        // serialization / deserialization and compare the family name with already deserialized
+        // one.)
+        let deserialized = Typeface::deserialize(&serialized).unwrap();
+        let serialized2 = deserialized.serialize(SerializeBehavior::DoIncludeData);
+        let deserialized2 = Typeface::deserialize(&serialized2).unwrap();
 
-#[test]
-fn family_name_iterator_owns_the_strings_and_returns_at_least_one_name_for_the_default_typeface() {
-    let tf = Typeface::default();
-    let family_names = tf.new_family_name_iterator();
-    drop(tf);
-
-    let mut any = false;
-    for name in family_names {
-        println!("family: {}, language: {}", name.string, name.language);
-        any = true
+        // why aren't they not equal?
+        // assert!(Typeface::equal(&tf, &deserialized));
+        assert_eq!(deserialized.family_name(), deserialized2.family_name());
     }
-    assert!(any);
+
+    #[test]
+    fn family_name_iterator_owns_the_strings_and_returns_at_least_one_name_for_the_default_typeface(
+    ) {
+        let tf = Typeface::default();
+        let family_names = tf.new_family_name_iterator();
+        drop(tf);
+
+        let mut any = false;
+        for name in family_names {
+            println!("family: {}, language: {}", name.string, name.language);
+            any = true
+        }
+        assert!(any);
+    }
+
+    #[test]
+    fn get_font_data_of_default() {
+        let tf = Typeface::default();
+        let (data, _ttc_index) = tf.to_font_data().unwrap();
+        assert!(!data.is_empty());
+    }
 }

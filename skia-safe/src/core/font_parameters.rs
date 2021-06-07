@@ -6,6 +6,7 @@ pub mod variation {
     use skia_bindings as sb;
     use skia_bindings::SkFontParameters_Variation_Axis;
 
+    #[repr(C)]
     #[derive(Clone, PartialEq, Default, Debug)]
     pub struct Axis {
         pub tag: FourByteTag,
@@ -22,6 +23,16 @@ pub mod variation {
     }
 
     impl Axis {
+        pub const fn new(tag: FourByteTag, min: f32, def: f32, max: f32, hidden: bool) -> Self {
+            Axis {
+                tag,
+                min,
+                def,
+                max,
+                flags: if hidden { 1 } else { 0 },
+            }
+        }
+
         pub fn is_hidden(&self) -> bool {
             unsafe { sb::C_SkFontParameters_Variation_Axis_isHidden(self.native()) }
         }

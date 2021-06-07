@@ -1,11 +1,10 @@
-use crate::{
-    prelude::*, ColorType, Data, ImageInfo, Pixmap, YUVAIndex, YUVAInfo, YUVASizeInfo,
-    YUVColorSpace,
-};
-use skia_bindings as sb;
-use skia_bindings::{SkYUVAPixmapInfo, SkYUVAPixmaps};
-use std::{ffi::c_void, ptr, slice};
+use crate::{prelude::*, ColorType, Data, ImageInfo, Pixmap, YUVAInfo, YUVColorSpace};
+use skia_bindings::{self as sb, SkYUVAPixmapInfo, SkYUVAPixmaps};
+use std::{ffi::c_void, fmt, ptr};
 use yuva_pixmap_info::SupportedDataTypes;
+
+/// Data type for Y, U, V, and possibly A channels independent of how values are packed into planes.
+pub use yuva_pixmap_info::DataType;
 
 /// [YUVAInfo] combined with per-plane [ColorType]s and row bytes. Fully specifies the [Pixmap]`s
 /// for a YUVA image without the actual pixel memory and data.
@@ -22,6 +21,19 @@ impl NativeDrop for SkYUVAPixmapInfo {
 impl NativePartialEq for SkYUVAPixmapInfo {
     fn eq(&self, rhs: &Self) -> bool {
         unsafe { sb::C_SkYUVAPixmapInfo_equals(self, rhs) }
+    }
+}
+
+impl fmt::Debug for YUVAPixmapInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let plane_infos: Vec<_> = self.plane_infos().collect();
+        let row_bytes: Vec<_> = self.row_bytes_iter().collect();
+        f.debug_struct("YUVAPixmapInfo")
+            .field("yuva_info", &self.yuva_info())
+            .field("plane_infos", &plane_infos)
+            .field("row_bytes", &row_bytes)
+            .field("data_type", &self.data_type())
+            .finish()
     }
 }
 
@@ -112,21 +124,31 @@ impl YUVAPixmapInfo {
         self.native().fDataType
     }
 
-    /// Row bytes for the ith plane. Returns [None] if `i` >= [numPlanes(&self)] or this [YUVAPixmapInfo] is
-    /// invalid.
+    /// Row bytes for the ith plane. Returns `None` if `i` >= [`Self::num_planes()`] or this
+    /// [YUVAPixmapInfo] is invalid.
     pub fn row_bytes(&self, i: usize) -> Option<usize> {
         (i < self.num_planes()).if_true_then_some(|| unsafe {
             sb::C_SkYUVAPixmapInfo_rowBytes(self.native(), i.try_into().unwrap())
         })
     }
 
-    /// Image info for the ith plane, or [None] if `i` >= [numPlanes(&self)]
+    /// Row bytes for all planes.
+    pub fn row_bytes_iter(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.num_planes()).map(move |i| self.row_bytes(i).unwrap())
+    }
+
+    /// Image info for the ith plane, or `None` if `i` >= [`Self::num_planes()`]
     pub fn plane_info(&self, i: usize) -> Option<&ImageInfo> {
         (i < self.num_planes()).if_true_then_some(|| {
             ImageInfo::from_native_ref(unsafe {
                 &*sb::C_SkYUVAPixmapInfo_planeInfo(self.native(), i.try_into().unwrap())
             })
         })
+    }
+
+    /// An iterator of all planes' image infos.
+    pub fn plane_infos(&self) -> impl Iterator<Item = &ImageInfo> {
+        (0..self.num_planes()).map(move |i| self.plane_info(i).unwrap())
     }
 
     /// Determine size to allocate for all planes. Optionally retrieves the per-plane sizes in
@@ -154,11 +176,16 @@ impl YUVAPixmapInfo {
         &self,
         memory: *mut c_void,
     ) -> Option<[Pixmap; Self::MAX_PLANES]> {
-        // Can't return a Vec<Pixmap> because Pixmap's can't be cloned.
+        // Can't return a Vec<Pixmap> because Pixmaps can't be cloned.
         let mut pixmaps: [Pixmap; Self::MAX_PLANES] = Default::default();
         self.native()
             .initPixmapsFromSingleAllocation(memory, pixmaps.native_mut().as_mut_ptr())
             .if_true_some(pixmaps)
+    }
+
+    /// Is this valid and does it use color types allowed by the passed [SupportedDataTypes]?
+    pub fn is_supported(&self, data_types: &SupportedDataTypes) -> bool {
+        unsafe { self.native().isSupported(data_types.native()) }
     }
 
     /// Returns `true` if this has been configured with a non-empty dimensioned [YUVAInfo] with
@@ -167,9 +194,9 @@ impl YUVAPixmapInfo {
         unsafe { sb::C_SkYUVAPixmapInfo_isValid(info) }
     }
 
-    /// Is this valid and does it use color types allowed by the passed [SupportedDataTypes]?
-    pub fn is_supported(&self, data_types: &SupportedDataTypes) -> bool {
-        unsafe { self.native().isSupported(data_types.native()) }
+    /// Creates a native default instance that is invalid.
+    pub(crate) fn new_invalid() -> SkYUVAPixmapInfo {
+        construct(|pi| unsafe { sb::C_SkYUVAPixmapInfo_Construct(pi) })
     }
 }
 
@@ -191,7 +218,15 @@ impl NativeClone for SkYUVAPixmaps {
     }
 }
 
-pub use yuva_pixmap_info::DataType;
+impl fmt::Debug for YUVAPixmaps {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("YUVAPixmaps")
+            .field("planes", &self.planes())
+            .field("yuva_info", &self.yuva_info())
+            .field("data_type", &self.data_type())
+            .finish()
+    }
+}
 
 impl YUVAPixmaps {
     pub const MAX_PLANES: usize = YUVAPixmapInfo::MAX_PLANES;
@@ -265,32 +300,14 @@ impl YUVAPixmaps {
     /// Access the [Pixmap] planes.
     pub fn planes(&self) -> &[Pixmap] {
         unsafe {
-            let planes = Pixmap::from_native_ref(&*sb::C_SkYUVAPixmaps_planes(self.native()));
-            slice::from_raw_parts(planes, self.num_planes())
+            let planes = Pixmap::from_native_ptr(sb::C_SkYUVAPixmaps_planes(self.native()));
+            safer::from_raw_parts(planes, self.num_planes())
         }
     }
 
     /// Get the ith [Pixmap] plane. `Pixmap` will be default initialized if i >= numPlanes.
     pub fn plane(&self, i: usize) -> &Pixmap {
         &self.planes()[i]
-    }
-
-    /// Computes a [YUVAIndex] representation of the planar layout.
-    pub fn to_yuva_indices(&self) -> [YUVAIndex; YUVAIndex::INDEX_COUNT] {
-        let mut indices = [YUVAIndex::default(); YUVAIndex::INDEX_COUNT];
-        unsafe { self.native().toYUVAIndices(indices[0].native_mut()) };
-        indices
-    }
-
-    /// Conversion to legacy YUVA data structures.
-    pub fn to_legacy(&self) -> Option<(YUVASizeInfo, [YUVAIndex; 4])> {
-        let mut info = YUVASizeInfo::default();
-        let mut indices = [YUVAIndex::default(); 4];
-        unsafe {
-            self.native()
-                .toLegacy(info.native_mut(), &mut indices.native_mut()[0])
-        }
-        .if_true_some((info, indices))
     }
 
     pub(crate) fn native_is_valid(pixmaps: *const SkYUVAPixmaps) -> bool {
@@ -300,8 +317,8 @@ impl YUVAPixmaps {
 
 pub mod yuva_pixmap_info {
     use crate::{prelude::*, ColorType};
-    use skia_bindings as sb;
-    use skia_bindings::SkYUVAPixmapInfo_SupportedDataTypes;
+    use skia_bindings::{self as sb, SkYUVAPixmapInfo_SupportedDataTypes};
+    use std::fmt;
 
     pub use crate::yuva_info::PlaneConfig;
     pub use crate::yuva_info::Subsampling;
@@ -326,6 +343,14 @@ pub mod yuva_pixmap_info {
             Self::construct(|sdt| unsafe {
                 sb::C_SkYUVAPixmapInfo_SupportedDataTypes_Construct(sdt)
             })
+        }
+    }
+
+    impl fmt::Debug for SupportedDataTypes {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("SupportedDataType")
+                .field("data_type_support", &self.native().fDataTypeSupport)
+                .finish()
         }
     }
 

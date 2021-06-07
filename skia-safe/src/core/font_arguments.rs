@@ -1,8 +1,6 @@
 use crate::prelude::*;
-use skia_bindings as sb;
-use skia_bindings::{SkFontArguments, SkFontArguments_VariationPosition};
-use std::marker::PhantomData;
-use std::{mem, slice};
+use skia_bindings::{self as sb, SkFontArguments, SkFontArguments_VariationPosition};
+use std::{fmt, marker::PhantomData, mem};
 
 #[derive(Debug)]
 pub struct VariationPosition<'a> {
@@ -34,21 +32,33 @@ pub struct FontArguments<'a> {
     pd: PhantomData<&'a [variation_position::Coordinate]>,
 }
 
-impl<'a> NativeTransmutable<SkFontArguments> for FontArguments<'a> {}
+impl NativeTransmutable<SkFontArguments> for FontArguments<'_> {}
 #[test]
 fn test_font_arguments_layout() {
     FontArguments::test_layout()
 }
 
-impl<'a> Drop for FontArguments<'a> {
+impl Drop for FontArguments<'_> {
     fn drop(&mut self) {
         unsafe { sb::C_SkFontArguments_destruct(self.native_mut()) }
     }
 }
 
-impl<'a> Default for FontArguments<'a> {
+impl Default for FontArguments<'_> {
     fn default() -> Self {
         FontArguments::new()
+    }
+}
+
+impl fmt::Debug for FontArguments<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FontArguments")
+            .field("collection_index", &self.collection_index())
+            .field(
+                "variation_design_position",
+                &self.variation_design_position(),
+            )
+            .finish()
     }
 }
 
@@ -90,7 +100,7 @@ impl FontArguments<'_> {
         unsafe {
             let position = sb::C_SkFontArguments_getVariationDesignPosition(self.native());
             VariationPosition {
-                coordinates: slice::from_raw_parts(
+                coordinates: safer::from_raw_parts(
                     position.coordinates as *const _,
                     position.coordinateCount.try_into().unwrap(),
                 ),

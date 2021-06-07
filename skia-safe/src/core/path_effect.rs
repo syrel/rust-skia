@@ -4,10 +4,10 @@ use skia_bindings as sb;
 use skia_bindings::{
     SkFlattenable, SkPathEffect, SkPathEffect_DashType, SkPathEffect_PointData, SkRefCntBase,
 };
-use std::os::raw;
-use std::slice;
+use std::{fmt, os::raw};
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct PointData {
     pub flags: point_data::PointFlags,
     points: *const Point,
@@ -53,7 +53,7 @@ impl Default for PointData {
 
 impl PointData {
     pub fn points(&self) -> &[Point] {
-        unsafe { slice::from_raw_parts(self.points, self.num_points.try_into().unwrap()) }
+        unsafe { safer::from_raw_parts(self.points, self.num_points.try_into().unwrap()) }
     }
 }
 
@@ -96,7 +96,15 @@ impl NativeFlattenable for SkPathEffect {
     }
 }
 
-impl RCHandle<SkPathEffect> {
+impl fmt::Debug for PathEffect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PathEffect")
+            .field("as_a_dash", &self.as_a_dash())
+            .finish()
+    }
+}
+
+impl PathEffect {
     pub fn sum(first: impl Into<PathEffect>, second: impl Into<PathEffect>) -> PathEffect {
         PathEffect::from_ptr(unsafe {
             sb::C_SkPathEffect_MakeSum(first.into().into_ptr(), second.into().into_ptr())

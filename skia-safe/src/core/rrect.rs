@@ -1,8 +1,6 @@
-use crate::prelude::*;
-use crate::{interop, scalar, Matrix, Rect, Vector};
-use skia_bindings as sb;
-use skia_bindings::SkRRect;
-use std::{mem, ptr};
+use crate::{interop, prelude::*, scalar, Matrix, Rect, Vector};
+use skia_bindings::{self as sb, SkRRect};
+use std::{fmt, mem, ptr};
 
 pub use skia_bindings::SkRRect_Type as Type;
 #[test]
@@ -35,6 +33,24 @@ impl PartialEq for RRect {
 impl Default for RRect {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl fmt::Debug for RRect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RRect")
+            .field("rect", &self.rect())
+            .field(
+                "radii",
+                &[
+                    self.radii(Corner::UpperLeft),
+                    self.radii(Corner::UpperRight),
+                    self.radii(Corner::LowerRight),
+                    self.radii(Corner::LowerLeft),
+                ],
+            )
+            .field("type", &self.get_type())
+            .finish()
     }
 }
 
@@ -152,7 +168,7 @@ impl RRect {
     }
 
     pub fn set_oval(&mut self, oval: impl AsRef<Rect>) {
-        unsafe { sb::C_SkRRect_setOval(self.native_mut(), oval.as_ref().native()) }
+        unsafe { self.native_mut().setOval(oval.as_ref().native()) }
     }
 
     pub fn set_rect_xy(&mut self, rect: impl AsRef<Rect>, x_rad: scalar, y_rad: scalar) {

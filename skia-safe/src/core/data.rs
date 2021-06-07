@@ -1,9 +1,11 @@
 use crate::prelude::*;
 use skia_bindings as sb;
 use skia_bindings::SkData;
-use std::ffi::{CStr, CString};
-use std::ops::Deref;
-use std::slice;
+use std::{
+    ffi::{CStr, CString},
+    fmt,
+    ops::Deref,
+};
 
 pub type Data = RCHandle<SkData>;
 unsafe impl Send for Data {}
@@ -23,14 +25,14 @@ impl NativeRefCounted for SkData {
     }
 }
 
-impl Deref for RCHandle<SkData> {
+impl Deref for Data {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
         self.as_bytes()
     }
 }
 
-impl PartialEq for RCHandle<SkData> {
+impl PartialEq for Data {
     // Although there is an implementation in SkData for equality testing, we
     // prefer to stay on the Rust side for that.
     fn eq(&self, other: &Self) -> bool {
@@ -38,7 +40,13 @@ impl PartialEq for RCHandle<SkData> {
     }
 }
 
-impl RCHandle<SkData> {
+impl fmt::Debug for Data {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Data").field("size", &self.size()).finish()
+    }
+}
+
+impl Data {
     pub fn size(&self) -> usize {
         self.native().fSize
     }
@@ -48,10 +56,7 @@ impl RCHandle<SkData> {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            let bytes = self.native().fPtr as *const u8;
-            slice::from_raw_parts(bytes, self.size())
-        }
+        unsafe { safer::from_raw_parts(self.native().fPtr as _, self.size()) }
     }
 
     // TODO:

@@ -397,7 +397,7 @@ impl Index<usize> for V4 {
 }
 
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct M44 {
     mat: [f32; Self::COMPONENTS],
 }
@@ -447,20 +447,20 @@ impl M44 {
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         m0: scalar,
-        m1: scalar,
-        m2: scalar,
-        m3: scalar,
         m4: scalar,
-        m5: scalar,
-        m6: scalar,
-        m7: scalar,
         m8: scalar,
-        m9: scalar,
-        m10: scalar,
-        m11: scalar,
         m12: scalar,
+        m1: scalar,
+        m5: scalar,
+        m9: scalar,
         m13: scalar,
+        m2: scalar,
+        m6: scalar,
+        m10: scalar,
         m14: scalar,
+        m3: scalar,
+        m7: scalar,
+        m11: scalar,
         m15: scalar,
     ) -> Self {
         Self {
@@ -518,6 +518,16 @@ impl M44 {
         let mut m = Self::default();
         m.set_rotate(axis, radians);
         m
+    }
+
+    pub fn look_at(eye: &V3, center: &V3, up: &V3) -> Self {
+        Self::construct(|m| unsafe {
+            sb::C_SkM44_LookAt(eye.native(), center.native(), up.native(), m)
+        })
+    }
+
+    pub fn perspective(near: f32, far: f32, angle: f32) -> Self {
+        Self::construct(|m| unsafe { sb::C_SkM44_Perspective(near, far, angle, m) })
     }
 
     pub fn get_col_major(&self, v: &mut [scalar; Self::COMPONENTS]) {
@@ -760,16 +770,6 @@ impl M44 {
         self
     }
 
-    pub fn look_at(eye: &V3, center: &V3, up: &V3) -> Self {
-        Self::construct(|m| unsafe {
-            sb::C_Sk3LookAt(eye.native(), center.native(), up.native(), m)
-        })
-    }
-
-    pub fn perspective(near: f32, far: f32, angle: f32) -> Self {
-        Self::construct(|m| unsafe { sb::C_Sk3Perspective(near, far, angle, m) })
-    }
-
     // helper
 
     #[allow(deprecated)]
@@ -842,5 +842,22 @@ impl From<&Matrix44> for M44 {
         let mut rm: [f32; 16] = Default::default();
         m.as_col_major(&mut rm);
         M44::col_major(&rm)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{matrix, Matrix, Rect, M44};
+
+    #[test]
+    pub fn convert_from_matrix_and_back() {
+        // taken from skulpin's physics example.
+        let vr = Rect::new(-4.5, -4.0, 4.5, 2.0);
+        let dst = Rect::new(0.0, 0.0, 1350.0, 900.0);
+
+        let m = Matrix::from_rect_to_rect(vr, dst, matrix::ScaleToFit::Center).unwrap();
+        let m44 = M44::from(m);
+        let m3 = m44.to_m33();
+        assert_eq!(m, m3);
     }
 }

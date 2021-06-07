@@ -1,10 +1,12 @@
 use crate::prelude::*;
 use skia_bindings as sb;
 use skia_bindings::{SkDataTable, SkRefCntBase};
-use std::convert::TryInto;
-use std::ffi::{c_void, CStr};
-use std::ops::Index;
-use std::{mem, slice};
+use std::{
+    convert::TryInto,
+    ffi::{c_void, CStr},
+    fmt, mem,
+    ops::Index,
+};
 
 pub type DataTable = RCHandle<SkDataTable>;
 unsafe impl Send for DataTable {}
@@ -22,7 +24,15 @@ impl Index<usize> for DataTable {
     }
 }
 
-impl RCHandle<SkDataTable> {
+impl fmt::Debug for DataTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DataTable")
+            .field("count", &self.count())
+            .finish()
+    }
+}
+
+impl DataTable {
     pub fn is_empty(&self) -> bool {
         self.count() == 0
     }
@@ -50,7 +60,7 @@ impl RCHandle<SkDataTable> {
         let element_size = mem::size_of::<T>();
         assert_eq!(size % element_size, 0);
         let elements = size / element_size;
-        slice::from_raw_parts(ptr as _, elements)
+        safer::from_raw_parts(ptr as _, elements)
     }
 
     pub fn at_str(&self, index: usize) -> &CStr {
@@ -87,9 +97,7 @@ impl RCHandle<SkDataTable> {
     }
 
     // TODO: wrap MakeArrayProc()
-}
 
-impl RCHandle<SkDataTable> {
     pub fn iter(&self) -> Iter {
         Iter {
             table: self,
@@ -99,6 +107,7 @@ impl RCHandle<SkDataTable> {
     }
 }
 
+#[derive(Debug)]
 pub struct Iter<'a> {
     table: &'a DataTable,
     count: usize,

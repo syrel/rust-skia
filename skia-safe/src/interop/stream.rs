@@ -7,8 +7,8 @@ use crate::prelude::*;
 use crate::Data;
 use skia_bindings as sb;
 use skia_bindings::{SkDynamicMemoryWStream, SkMemoryStream, SkStream, SkStreamAsset, SkWStream};
-use std::marker::PhantomData;
 use std::ptr;
+use std::{fmt, marker::PhantomData};
 
 /// Trait representing an Skia allocated Stream type with a base class of SkStream.
 #[repr(transparent)]
@@ -28,8 +28,8 @@ impl<T: NativeStreamBase> Drop for Stream<T> {
 }
 
 impl<N: NativeStreamBase> Stream<N> {
-    pub fn from_ptr(ptr: *mut N) -> Stream<N> {
-        Stream(ptr::NonNull::new(ptr).unwrap())
+    pub fn from_ptr(ptr: *mut N) -> Option<Stream<N>> {
+        ptr::NonNull::new(ptr).map(Stream)
     }
 }
 
@@ -42,12 +42,18 @@ impl NativeStreamBase for SkStreamAsset {
     }
 }
 
-impl NativeAccess<SkStreamAsset> for Stream<SkStreamAsset> {
+impl NativeAccess<SkStreamAsset> for StreamAsset {
     fn native(&self) -> &SkStreamAsset {
         unsafe { self.0.as_ref() }
     }
     fn native_mut(&mut self) -> &mut SkStreamAsset {
         unsafe { self.0.as_mut() }
+    }
+}
+
+impl fmt::Debug for StreamAsset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StreamAsset").finish()
     }
 }
 
@@ -71,6 +77,14 @@ impl NativeAccess<SkMemoryStream> for MemoryStream<'_> {
     }
     fn native_mut(&mut self) -> &mut SkMemoryStream {
         unsafe { self.native.as_mut() }
+    }
+}
+
+impl fmt::Debug for MemoryStream<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MemoryStream")
+            .field("offset", &self.native().fOffset)
+            .finish()
     }
 }
 
@@ -98,9 +112,20 @@ impl NativeDrop for SkDynamicMemoryWStream {
     }
 }
 
-impl Handle<SkDynamicMemoryWStream> {
+impl fmt::Debug for DynamicMemoryWStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DynamicMemoryWStream")
+            .field(
+                "bytes_written_before_tail",
+                &self.native().fBytesWrittenBeforeTail,
+            )
+            .finish()
+    }
+}
+
+impl DynamicMemoryWStream {
     pub fn new() -> Self {
-        Self::construct(|dmws| unsafe { sb::C_SkDynamicMemoryWStream_Construct(dmws) })
+        Self::construct(|w_stream| unsafe { sb::C_SkDynamicMemoryWStream_Construct(w_stream) })
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
@@ -128,6 +153,7 @@ impl Handle<SkDynamicMemoryWStream> {
         StreamAsset::from_ptr(unsafe {
             sb::C_SkDynamicMemoryWStream_detachAsStream(self.native_mut())
         })
+        .unwrap()
     }
 }
 

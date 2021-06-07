@@ -1,11 +1,13 @@
 use super::{FontFamilies, TextBaseline, TextShadow};
-use crate::interop::{AsStr, FromStrs, SetStr};
-use crate::prelude::*;
-use crate::textlayout::{RangeExtensions, EMPTY_INDEX, EMPTY_RANGE};
-use crate::{interop, scalar, Color, FontMetrics, FontStyle, Paint, Typeface};
+use crate::{
+    interop::{self, AsStr, FromStrs, SetStr},
+    prelude::*,
+    scalar,
+    textlayout::{RangeExtensions, EMPTY_INDEX, EMPTY_RANGE},
+    Color, FontMetrics, FontStyle, Paint, Typeface,
+};
 use skia_bindings as sb;
-use std::ops::Range;
-use std::slice;
+use std::{fmt, ops::Range};
 
 bitflags! {
     pub struct TextDecoration: u32 {
@@ -47,6 +49,7 @@ fn style_type_member_naming() {
     let _ = StyleType::LetterSpacing;
 }
 
+#[repr(C)]
 #[derive(Copy, Clone, PartialEq, Default, Debug)]
 pub struct Decoration {
     pub ty: TextDecoration,
@@ -87,13 +90,22 @@ impl NativeClone for sb::skia_textlayout_FontFeature {
     }
 }
 
-impl PartialEq for Handle<sb::skia_textlayout_FontFeature> {
+impl PartialEq for FontFeature {
     fn eq(&self, other: &Self) -> bool {
         self.name() == other.name() && self.value() == other.value()
     }
 }
 
-impl Handle<sb::skia_textlayout_FontFeature> {
+impl fmt::Debug for FontFeature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("FontFeature")
+            .field(&self.name())
+            .field(&self.value())
+            .finish()
+    }
+}
+
+impl FontFeature {
     pub fn name(&self) -> &str {
         self.native().fName.as_str()
     }
@@ -103,7 +115,8 @@ impl Handle<sb::skia_textlayout_FontFeature> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[repr(C)]
+#[derive(Clone, Default, Debug)]
 pub struct PlaceholderStyle {
     pub width: scalar,
     pub height: scalar,
@@ -167,6 +180,30 @@ impl NativePartialEq for sb::skia_textlayout_TextStyle {
 impl Default for Handle<sb::skia_textlayout_TextStyle> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl fmt::Debug for TextStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TextStyle")
+            .field("color", &self.color())
+            .field("foreground", &self.foreground())
+            .field("background", &self.background())
+            .field("decoration", &self.decoration())
+            .field("font_style", &self.font_style())
+            .field("shadows", &self.shadows())
+            .field("font_features", &self.font_features())
+            .field("font_size", &self.font_size())
+            .field("font_families", &self.font_families())
+            .field("height", &self.height())
+            .field("height_override", &self.height_override())
+            .field("letter_spacing", &self.letter_spacing())
+            .field("word_spacing", &self.word_spacing())
+            .field("typeface", &self.typeface())
+            .field("locale", &self.locale())
+            .field("text_baseline", &self.text_baseline())
+            .field("is_placeholder", &self.is_placeholder())
+            .finish()
     }
 }
 
@@ -251,8 +288,8 @@ impl Handle<sb::skia_textlayout_TextStyle> {
         unsafe {
             let ts: &sb::TextShadows = transmute_ref(&self.native().fTextShadows);
             let mut cnt = 0;
-            let ptr = TextShadow::from_native_ref(&*sb::C_TextShadows_ptr_count(ts, &mut cnt));
-            slice::from_raw_parts(ptr, cnt)
+            let ptr = TextShadow::from_native_ptr(sb::C_TextShadows_ptr_count(ts, &mut cnt));
+            safer::from_raw_parts(ptr, cnt)
         }
     }
 
@@ -270,8 +307,8 @@ impl Handle<sb::skia_textlayout_TextStyle> {
         unsafe {
             let ff: &sb::FontFeatures = transmute_ref(&self.native().fFontFeatures);
             let mut cnt = 0;
-            let ptr = FontFeature::from_native_ref(&*sb::C_FontFeatures_ptr_count(ff, &mut cnt));
-            slice::from_raw_parts(ptr, cnt)
+            let ptr = FontFeature::from_native_ptr(sb::C_FontFeatures_ptr_count(ff, &mut cnt));
+            safer::from_raw_parts(ptr, cnt)
         }
     }
 
@@ -297,7 +334,7 @@ impl Handle<sb::skia_textlayout_TextStyle> {
         unsafe {
             let mut count = 0;
             let ptr = sb::C_TextStyle_getFontFamilies(self.native(), &mut count);
-            FontFamilies(slice::from_raw_parts(ptr, count))
+            FontFamilies(safer::from_raw_parts(ptr, count))
         }
     }
 
@@ -398,7 +435,8 @@ pub type TextIndex = usize;
 pub type TextRange = Range<usize>;
 pub const EMPTY_TEXT: TextRange = EMPTY_RANGE;
 
-#[derive(Clone, PartialEq)]
+#[repr(C)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Block {
     pub range: TextRange,
     pub style: TextStyle,
@@ -440,7 +478,8 @@ pub type BlockRange = Range<usize>;
 pub const EMPTY_BLOCK: usize = EMPTY_INDEX;
 pub const EMPTY_BLOCKS: Range<usize> = EMPTY_RANGE;
 
-#[derive(Clone, PartialEq)]
+#[repr(C)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Placeholder {
     pub range: TextRange,
     pub style: PlaceholderStyle,
@@ -458,8 +497,7 @@ fn placeholder_layout() {
 
 impl Default for Placeholder {
     fn default() -> Self {
-        #[allow(clippy::unknown_clippy_lints)]
-        #[allow(clippy::reversed_empty_ranges)] // 1.45 lint
+        #[allow(clippy::reversed_empty_ranges)]
         Self {
             range: EMPTY_RANGE,
             style: Default::default(),

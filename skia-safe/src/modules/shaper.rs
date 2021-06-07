@@ -1,15 +1,12 @@
-use crate::prelude::*;
-use crate::{scalar, Font, FontMgr, FourByteTag, Point, TextBlob};
-pub use run_handler::RunHandler;
-use skia_bindings as sb;
+use crate::{prelude::*, scalar, Font, FontMgr, FourByteTag, Point, TextBlob};
 use skia_bindings::{
-    RustRunHandler, SkShaper, SkShaper_BiDiRunIterator, SkShaper_FontRunIterator,
+    self as sb, RustRunHandler, SkShaper, SkShaper_BiDiRunIterator, SkShaper_FontRunIterator,
     SkShaper_LanguageRunIterator, SkShaper_RunHandler, SkShaper_RunIterator,
     SkShaper_ScriptRunIterator, SkTextBlobBuilderRunHandler,
 };
-use std::ffi::CStr;
-use std::marker::PhantomData;
-use std::os::raw;
+use std::{ffi::CStr, fmt, marker::PhantomData, os::raw};
+
+pub use run_handler::RunHandler;
 
 pub type Shaper = RefHandle<SkShaper>;
 unsafe impl Send for Shaper {}
@@ -21,13 +18,19 @@ impl NativeDrop for SkShaper {
     }
 }
 
-impl Default for RefHandle<SkShaper> {
+impl Default for Shaper {
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl RefHandle<SkShaper> {
+impl fmt::Debug for Shaper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Shaper").finish()
+    }
+}
+
+impl Shaper {
     pub fn new_primitive() -> Self {
         Self::from_ptr(unsafe { sb::C_SkShaper_MakePrimitive() }).unwrap()
     }
@@ -50,12 +53,20 @@ impl RefHandle<SkShaper> {
         })
     }
 
-    pub fn new(font_mgr: impl Into<Option<FontMgr>>) -> Self {
-        Self::from_ptr(unsafe { sb::C_SkShaper_Make(font_mgr.into().into_ptr_or_null()) }).unwrap()
+    pub fn purge_harf_buzz_cache() {
+        unsafe { sb::SkShaper_PurgeHarfBuzzCache() }
     }
 
     pub fn new_core_text() -> Option<Self> {
         Self::from_ptr(unsafe { sb::C_SkShaper_MakeCoreText() })
+    }
+
+    pub fn new(font_mgr: impl Into<Option<FontMgr>>) -> Self {
+        Self::from_ptr(unsafe { sb::C_SkShaper_Make(font_mgr.into().into_ptr_or_null()) }).unwrap()
+    }
+
+    pub fn purge_caches() {
+        unsafe { sb::SkShaper_PurgeCaches() }
     }
 }
 
@@ -95,7 +106,15 @@ impl NativeDrop for SkShaper_FontRunIterator {
     }
 }
 
-impl RefHandle<SkShaper_FontRunIterator> {
+impl fmt::Debug for FontRunIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FontRunIterator")
+            .field("current_font", &self.current_font())
+            .finish()
+    }
+}
+
+impl FontRunIterator {
     pub fn current_font(&self) -> &Font {
         Font::from_native_ref(unsafe {
             &*sb::C_SkShaper_FontRunIterator_currentFont(self.native())
@@ -103,7 +122,7 @@ impl RefHandle<SkShaper_FontRunIterator> {
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn new_font_mgr_run_iterator<'a>(
         utf8: &'a str,
         font: &Font,
@@ -143,13 +162,21 @@ impl NativeDrop for SkShaper_BiDiRunIterator {
     }
 }
 
-impl RefHandle<SkShaper_BiDiRunIterator> {
+impl fmt::Debug for BiDiRunIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BiDiRunIterator")
+            .field("current_level", &self.current_level())
+            .finish()
+    }
+}
+
+impl BiDiRunIterator {
     pub fn current_level(&self) -> u8 {
         unsafe { sb::C_SkShaper_BiDiRunIterator_currentLevel(self.native()) }
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn new_bidi_run_iterator(utf8: &str, bidi_level: u8) -> Option<Borrows<BiDiRunIterator>> {
         let bytes = utf8.as_bytes();
         BiDiRunIterator::from_ptr(unsafe {
@@ -184,7 +211,15 @@ impl NativeDrop for SkShaper_ScriptRunIterator {
     }
 }
 
-impl RefHandle<SkShaper_ScriptRunIterator> {
+impl fmt::Debug for ScriptRunIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScriptRunIterator")
+            .field("current_script", &self.current_script())
+            .finish()
+    }
+}
+
+impl ScriptRunIterator {
     pub fn current_script(&self) -> FourByteTag {
         FourByteTag::from_native_c(unsafe {
             sb::C_SkShaper_ScriptRunIterator_currentScript(self.native())
@@ -192,7 +227,7 @@ impl RefHandle<SkShaper_ScriptRunIterator> {
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn new_script_run_iterator(utf8: &str, script: FourByteTag) -> Borrows<ScriptRunIterator> {
         let bytes = utf8.as_bytes();
         ScriptRunIterator::from_ptr(unsafe {
@@ -235,7 +270,15 @@ impl NativeDrop for SkShaper_LanguageRunIterator {
     }
 }
 
-impl RefHandle<SkShaper_LanguageRunIterator> {
+impl fmt::Debug for LanguageRunIterator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LanguageRunIterator")
+            .field("current_language", &self.current_language())
+            .finish()
+    }
+}
+
+impl LanguageRunIterator {
     pub fn current_language(&self) -> &CStr {
         unsafe {
             CStr::from_ptr(sb::C_SkShaper_LanguageRunIterator_currentLanguage(
@@ -245,7 +288,7 @@ impl RefHandle<SkShaper_LanguageRunIterator> {
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn new_std_language_run_iterator(utf8: &str) -> Option<LanguageRunIterator> {
         // a LanguageRunIterator never accesses the UTF8 string, so it's safe to
         // not borrow the string.
@@ -285,6 +328,7 @@ pub mod run_handler {
         fn commit_line(&mut self);
     }
 
+    #[derive(Debug)]
     pub struct RunInfo<'a> {
         pub font: &'a Font,
         pub bidi_level: u8,
@@ -360,9 +404,9 @@ pub mod run_handler {
                 .map(|clusters| slice::from_raw_parts_mut(clusters.as_ptr(), glyph_count));
 
             Buffer {
-                glyphs: slice::from_raw_parts_mut(buffer.glyphs, glyph_count),
-                positions: slice::from_raw_parts_mut(
-                    Point::from_native_ref_mut(&mut *buffer.positions),
+                glyphs: safer::from_raw_parts_mut(buffer.glyphs, glyph_count),
+                positions: safer::from_raw_parts_mut(
+                    Point::from_native_ptr_mut(buffer.positions),
                     glyph_count,
                 ),
                 offsets,
@@ -418,7 +462,7 @@ impl<'a, T: RunHandler> AsRunHandler<'a> for T {
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn shape<'a, 'b: 'a>(
         &self,
         utf8: &str,
@@ -576,6 +620,7 @@ mod rust_run_handler {
 }
 
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct TextBlobBuilderRunHandler<'text>(SkTextBlobBuilderRunHandler, PhantomData<&'text str>);
 
 impl NativeAccess<SkTextBlobBuilderRunHandler> for TextBlobBuilderRunHandler<'_> {
@@ -640,7 +685,7 @@ impl AsNativeRunHandler for TextBlobBuilderRunHandler<'_> {
     }
 }
 
-impl RefHandle<SkShaper> {
+impl Shaper {
     pub fn shape_text_blob(
         &self,
         text: &str,

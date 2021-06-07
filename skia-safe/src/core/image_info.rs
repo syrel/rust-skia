@@ -1,7 +1,6 @@
-use crate::prelude::*;
-use crate::{ColorSpace, IPoint, IRect, ISize};
-use skia_bindings as sb;
-use skia_bindings::{SkColorInfo, SkColorType, SkImageInfo};
+use crate::{prelude::*, ColorSpace, IPoint, IRect, ISize};
+use skia_bindings::{self as sb, SkColorInfo, SkColorType, SkImageInfo};
+use std::{fmt, mem};
 
 pub use skia_bindings::SkAlphaType as AlphaType;
 #[test]
@@ -9,7 +8,7 @@ fn test_alpha_type_layout() {
     let _ = AlphaType::Premul;
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(i32)]
 pub enum ColorType {
     Unknown = SkColorType::kUnknown_SkColorType as _,
@@ -107,13 +106,27 @@ impl NativePartialEq for SkColorInfo {
     }
 }
 
-impl Default for Handle<SkColorInfo> {
+impl Default for ColorInfo {
     fn default() -> Self {
         Self::construct(|color_info| unsafe { sb::C_SkColorInfo_Construct(color_info) })
     }
 }
 
-impl Handle<SkColorInfo> {
+impl fmt::Debug for ColorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ColorInfo")
+            .field("color_space", &self.color_space())
+            .field("color_type", &self.color_type())
+            .field("alpha_type", &self.alpha_type())
+            .field("is_opaque", &self.is_opaque())
+            .field("is_gamma_close_to_srgb", &self.is_gamma_close_to_srgb())
+            .field("bytes_per_pixel", &self.bytes_per_pixel())
+            .field("shift_per_pixel", &self.shift_per_pixel())
+            .finish()
+    }
+}
+
+impl ColorInfo {
     pub fn new(ct: ColorType, at: AlphaType, cs: impl Into<Option<ColorSpace>>) -> Self {
         Self::construct(|color_info| unsafe {
             sb::C_SkColorInfo_Construct2(
@@ -199,7 +212,16 @@ impl Default for Handle<SkImageInfo> {
     }
 }
 
-impl Handle<SkImageInfo> {
+impl fmt::Debug for ImageInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImageInfo")
+            .field("color_info", self.color_info())
+            .field("dimensions", &self.dimensions())
+            .finish()
+    }
+}
+
+impl ImageInfo {
     pub fn new(
         dimensions: impl Into<ISize>,
         ct: ColorType,
@@ -381,20 +403,41 @@ impl Handle<SkImageInfo> {
         unsafe { sb::C_SkImageInfo_reset(self.native_mut()) };
         self
     }
+
+    /// Returns `true` if the `row_bytes` are valid for [ImageInfo] _and_ an image would fit into
+    /// `pixels`.
+    pub(crate) fn valid_pixels<P>(&self, row_bytes: usize, pixels: &[P]) -> bool {
+        self.valid_row_bytes(row_bytes)
+            && mem::size_of_val(pixels) >= self.compute_byte_size(row_bytes)
+    }
 }
 
-#[test]
-fn ref_cnt_in_relation_to_color_space() {
-    let cs = ColorSpace::new_srgb();
-    let before = cs.native().ref_cnt();
-    {
-        let ii = ImageInfo::new_n32((10, 10), AlphaType::Premul, Some(cs.clone()));
-        // one for the capture in image info
-        assert_eq!(before + 1, cs.native().ref_cnt());
-        let cs2 = ii.color_space();
-        // and one for the returned one.
-        assert_eq!(before + 2, cs.native().ref_cnt());
-        drop(cs2);
+#[cfg(test)]
+
+mod tests {
+    use crate::prelude::*;
+    use crate::{AlphaType, ColorSpace, ImageInfo};
+    use std::mem;
+
+    #[test]
+    fn ref_cnt_in_relation_to_color_space() {
+        let cs = ColorSpace::new_srgb();
+        let before = cs.native().ref_cnt();
+        {
+            let ii = ImageInfo::new_n32((10, 10), AlphaType::Premul, Some(cs.clone()));
+            // one for the capture in image info
+            assert_eq!(before + 1, cs.native().ref_cnt());
+            let cs2 = ii.color_space();
+            // and one for the returned one.
+            assert_eq!(before + 2, cs.native().ref_cnt());
+            drop(cs2);
+        }
+        assert_eq!(before, cs.native().ref_cnt())
     }
-    assert_eq!(before, cs.native().ref_cnt())
+
+    #[test]
+    fn size_of_val_actually_counts_slices_bytes() {
+        let x: [u16; 4] = Default::default();
+        assert_eq!(mem::size_of_val(&x), 8);
+    }
 }

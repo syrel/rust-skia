@@ -1,7 +1,6 @@
 use crate::{prelude::*, scalar, Path, PathDirection, PathFillType, Point, RRect, Rect, Vector};
-use skia_bindings as sb;
-use skia_bindings::SkPathBuilder;
-use std::mem;
+use skia_bindings::{self as sb, SkPathBuilder};
+use std::{fmt, mem};
 
 pub use skia_bindings::SkPathBuilder_ArcSize as ArcSize;
 #[test]
@@ -22,6 +21,14 @@ impl NativeDrop for SkPathBuilder {
 impl Clone for PathBuilder {
     fn clone(&self) -> Self {
         Self::construct(|pb| unsafe { sb::C_SkPathBuilder_CopyConstruct(pb, self.native()) })
+    }
+}
+
+impl fmt::Debug for PathBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PathBuilder")
+            .field("fill_type", &self.fill_type())
+            .finish()
     }
 }
 
@@ -321,6 +328,11 @@ impl PathBuilder {
                 is_closed,
             );
         }
+        self
+    }
+
+    pub fn add_path(&mut self, path: &Path) -> &mut Self {
+        unsafe { self.native_mut().addPath(path.native()) };
         self
     }
 

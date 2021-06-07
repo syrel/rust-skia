@@ -1,7 +1,6 @@
 use crate::prelude::*;
-use skia_bindings as sb;
-use skia_bindings::SkString;
-use std::{slice, str};
+use skia_bindings::{self as sb, SkString};
+use std::{fmt, str};
 
 pub type String = Handle<SkString>;
 unsafe impl Send for String {}
@@ -27,13 +26,19 @@ impl ToString for String {
     }
 }
 
-impl Default for Handle<SkString> {
+impl Default for String {
     fn default() -> Self {
         Self::from_str("")
     }
 }
 
-impl Handle<SkString> {
+impl fmt::Debug for String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+
+impl String {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(str: impl AsRef<str>) -> String {
         let bytes = str.as_ref().as_bytes();
@@ -59,10 +64,8 @@ impl AsStr for SkString {
     fn as_str(&self) -> &str {
         let mut size = 0;
         let slice = unsafe {
-            slice::from_raw_parts(
-                sb::C_SkString_c_str_size(self, &mut size) as *const u8,
-                size,
-            )
+            let ptr = sb::C_SkString_c_str_size(self, &mut size) as *const u8;
+            safer::from_raw_parts(ptr, size)
         };
         str::from_utf8(slice).unwrap()
     }

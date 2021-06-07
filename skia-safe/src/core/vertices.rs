@@ -1,13 +1,9 @@
-use crate::prelude::*;
-use crate::{Color, Point, Rect};
-use skia_bindings as sb;
+use crate::{prelude::*, Color, Point, Rect};
 use skia_bindings::{
-    SkPoint, SkVertices, SkVertices_Attribute, SkVertices_Attribute_Type, SkVertices_Builder,
+    self as sb, SkPoint, SkVertices, SkVertices_Attribute, SkVertices_Attribute_Type,
+    SkVertices_Builder,
 };
-use std::ffi::CStr;
-use std::marker::PhantomData;
-use std::os::raw::c_char;
-use std::{ptr, slice};
+use std::{ffi::CStr, fmt, marker::PhantomData, os::raw::c_char, ptr, slice};
 
 #[deprecated(since = "0.29.0", note = "removed without replacement")]
 pub type BoneIndices = [u32; 4];
@@ -141,7 +137,17 @@ impl NativeRefCounted for SkVertices {
     }
 }
 
-impl RCHandle<SkVertices> {
+impl fmt::Debug for Vertices {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Vertices")
+            .field("unique_id", &self.unique_id())
+            .field("bounds", &self.bounds())
+            .field("approximate_size", &self.approximate_size())
+            .finish()
+    }
+}
+
+impl Vertices {
     pub fn new_copy(
         mode: VertexMode,
         positions: &[Point],
@@ -222,7 +228,7 @@ impl RCHandle<SkVertices> {
     #[allow(deprecated)]
     pub fn positions(&self) -> &[Point] {
         let positions: *const SkPoint = self.native().fPositions;
-        unsafe { slice::from_raw_parts(positions as _, self.vertex_count()) }
+        unsafe { safer::from_raw_parts(positions as _, self.vertex_count()) }
     }
 
     #[deprecated(since = "0.29.0", note = "will be removed without replacement")]
@@ -301,32 +307,37 @@ impl NativeDrop for SkVertices_Builder {
     }
 }
 
-impl Handle<SkVertices_Builder> {
+impl fmt::Debug for Builder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Builder").finish()
+    }
+}
+
+impl Builder {
     pub fn new(
         mode: VertexMode,
         vertex_count: usize,
         index_count: usize,
         flags: BuilderFlags,
     ) -> Builder {
-        Self::from_native_c(unsafe {
+        let r = Self::from_native_c(unsafe {
             SkVertices_Builder::new(
                 mode,
                 vertex_count.try_into().unwrap(),
                 index_count.try_into().unwrap(),
                 flags.bits(),
             )
-        })
-    }
+        });
 
-    pub fn is_valid(&self) -> bool {
-        !self.native().fVertices.fPtr.is_null()
+        assert!(!r.native().fVertices.fPtr.is_null());
+        r
     }
 
     pub fn positions(&mut self) -> &mut [Point] {
         unsafe {
             let vertices = &*self.native().fVertices.fPtr;
-            slice::from_raw_parts_mut(
-                Point::from_native_ref_mut(&mut *vertices.fPositions),
+            safer::from_raw_parts_mut(
+                Point::from_native_ptr_mut(vertices.fPositions),
                 vertices.fVertexCount.try_into().unwrap(),
             )
         }
